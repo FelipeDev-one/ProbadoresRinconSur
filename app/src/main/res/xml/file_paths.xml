@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Carpetas que el FileProvider puede compartir con la app de cámara.
+     files-path = context.filesDir (carpeta privada de la app). Ver utils/ImagenUtils.kt -->
+<paths>
+    <files-path
+        name="evidencias"
+        path="evidencias/" />
+</paths>

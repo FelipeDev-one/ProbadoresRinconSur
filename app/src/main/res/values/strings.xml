@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Probadores Rincón Sur</string>
+
+    <!-- Inicio -->
+    <string name="marca">Rincón Sur</string>
+    <string name="sucursal">Probadores de Vestuario · RS-014 Zona Norte</string>
+    <string name="cargando_seccion">Cargando la sección…</string>
+    <string name="inicio_cliente_titulo">Ver tiempo de espera</string>
+    <string name="inicio_cliente_detalle">Pantalla para clientes en el punto de espera</string>
+    <string name="inicio_colaborador_titulo">Ingreso colaboradores</string>
+    <string name="inicio_continuar_titulo">Continuar al panel</string>
+    <string name="inicio_colaborador_detalle">Asistentes, vendedores(as) y jefatura</string>
+
+    <!-- Títulos de pantallas -->
+    <string name="titulo_cliente">Probadores · Vestuario</string>
+    <string name="titulo_login">Ingreso colaboradores</string>
+    <string name="titulo_probadores">Probadores</string>
+    <string name="titulo_fila">Fila de espera</string>
+    <string name="titulo_resumen">Resumen</string>
+    <string name="titulo_ajustes">Ajustes</string>
+    <string name="titulo_nuevo_turno">Nuevo turno</string>
+    <string name="titulo_turno_confirmado">Turno registrado</string>
+    <string name="titulo_colaboradores">Colaboradores</string>
+    <string name="titulo_colaborador_nuevo">Nuevo colaborador</string>
+    <string name="titulo_colaborador_editar">Editar colaborador</string>
+    <string name="titulo_parametros">Parámetros de la sección</string>
+    <string name="titulo_fuera_servicio">%1$s fuera de servicio</string>
+
+    <!-- Barra de navegación inferior -->
+    <string name="nav_probadores">Probadores</string>
+    <string name="nav_fila">Fila</string>
+    <string name="nav_resumen">Resumen</string>
+    <string name="nav_ajustes">Ajustes</string>
+
+    <!-- Botones comunes -->
+    <string name="btn_ingresar">Ingresar</string>
+    <string name="btn_guardar">Guardar</string>
+    <string name="btn_cancelar">Cancelar</string>
+    <string name="btn_cerrar">Cerrar</string>
+    <string name="btn_cerrar_sesion">Cerrar sesión</string>
+    <string name="btn_nuevo_turno">Nuevo turno</string>
+    <string name="btn_registrar_turno">Registrar turno</string>
+    <string name="btn_volver_fila">Volver a la fila</string>
+    <string name="btn_otro_turno">Registrar otro turno</string>
+
+    <!-- Descripciones para lectores de pantalla (accesibilidad) -->
+    <string name="cd_volver">Volver</string>
+    <string name="cd_ver_clientes">Ver pantalla de clientes</string>
+    <string name="cd_foto_evidencia">Foto de evidencia de %1$s</string>
+    <string name="cd_quitar_prenda">Quitar una prenda</string>
+    <string name="cd_agregar_prenda">Agregar una prenda</string>
+
+    <!-- Cámara y galería (HU-08) -->
+    <string name="foto_titulo">Foto de evidencia (opcional)</string>
+    <string name="btn_camara">Cámara</string>
+    <string name="btn_galeria">Galería</string>
+    <string name="btn_quitar_foto">Quitar foto</string>
+    <string name="sin_foto">Sin foto</string>
+    <string name="sin_app_camara">Este equipo no tiene una app de cámara: elija una imagen de la galería</string>
+    <string name="sin_app_galeria">No se encontró una app para elegir imágenes</string>
+
+    <!-- Permisos -->
+    <string name="permiso_camara_denegado">Sin permiso de cámara no se puede tomar la foto. Puede elegir una imagen de la galería.</string>
+    <string name="btn_ajustes">Ajustes</string>
+</resources>
