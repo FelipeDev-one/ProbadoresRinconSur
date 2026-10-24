@@ -56,7 +56,26 @@ Evaluación Parcial 2 · DSY1105 Desarrollo de Aplicaciones Móviles · Sección
 | 18.447.093-4 | Inactivo |
 
 Fuera del horario de la tienda (10:00 a 21:00) se puede activar el modo demostración en Ajustes.
-Con el perfil de jefatura, la opción "Cargar hora peak de ejemplo" simula una tarde con fila y alertas.
+
+## Capturas
+
+Tomadas en un dispositivo físico.
+
+| Probadores | Asignar probador | Fila de espera |
+|---|---|---|
+| ![Probadores](docs/Probadores.png) | ![Asignar probador](docs/Asig_Probador.png) | ![Fila de espera](docs/Fila_Espera.png) |
+
+| Nuevo turno | Turno registrado | Consulta del cliente |
+|---|---|---|
+| ![Nuevo turno](docs/Formulario_Turno.png) | ![Turno registrado](docs/Turno_Registrado.png) | ![Consulta del cliente](docs/Info_Turno.png) |
+
+| Uso sin fila | Abandono | Nuevo colaborador |
+|---|---|---|
+| ![Uso sin fila](docs/Formulario_Probador.png) | ![Abandono](docs/Formulario_Abandono.png) | ![Nuevo colaborador](docs/Formulario_NColaborador.png) |
+
+| Fuera de servicio | Cámara | Probador con evidencia | Resumen |
+|---|---|---|---|
+| ![Fuera de servicio](docs/Formulario_FDS.png) | ![Cámara](docs/Camara.png) | ![Probador con evidencia](docs/Probador_FDS.png) | ![Resumen](docs/Resumen.png) |
 
 ## Estructura
 
@@ -65,8 +84,10 @@ model/        entidades y reglas de negocio
 data/         almacenamiento local y datos de ejemplo
 viewmodel/    estado y validaciones de cada pantalla
 navigation/   rutas y navegación
+permisos/     solicitud del permiso de cámara
 ui/           tema, componentes y pantallas
 utils/        validación de RUT, fechas, imágenes y vibración
+docs/         capturas de funcionamiento
 ```
 
 ## Pruebas
