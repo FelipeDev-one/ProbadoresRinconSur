@@ -39,7 +39,10 @@ import cl.duoc.rinconsur.probadores.ui.components.CampoTexto
 import cl.duoc.rinconsur.probadores.ui.theme.Dimens
 import cl.duoc.rinconsur.probadores.viewmodel.LoginViewModel
 
-// Ingreso de colaboradores con RUT validado (RF-10).
+
+private const val MOSTRAR_RUT_PRUEBA = false
+
+
 @Composable
 fun LoginScreen(
     onVolver: () -> Unit,
@@ -101,14 +104,16 @@ fun LoginScreen(
                     }
                 }
 
-                // Datos FICTICIOS del Anexo 9.2, para probar cada perfil durante la evaluación.
-                OutlinedCard(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(Dimens.espacioMedio), verticalArrangement = Arrangement.spacedBy(Dimens.espacioMini)) {
-                        Text("RUT de prueba (Anexo 9.2, ficticios)", style = MaterialTheme.typography.titleMedium)
-                        Text("12.984.561-9 · Jefatura (P. Morales)")
-                        Text("16.842.311-K · Asistente (C. Fuentes)")
-                        Text("17.550.982-8 · Vendedora (J. Muñoz)")
-                        Text("18.447.093-4 · Inactivo (F. Torres)")
+
+                if (MOSTRAR_RUT_PRUEBA) {
+                    OutlinedCard(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(Dimens.espacioMedio), verticalArrangement = Arrangement.spacedBy(Dimens.espacioMini)) {
+                            Text("RUT de prueba (Anexo 9.2, ficticios)", style = MaterialTheme.typography.titleMedium)
+                            Text("12.984.561-9 · Jefatura (P. Morales)")
+                            Text("16.842.311-K · Asistente (C. Fuentes)")
+                            Text("17.550.982-8 · Vendedora (J. Muñoz)")
+                            Text("18.447.093-4 · Inactivo (F. Torres)")
+                        }
                     }
                 }
             }
