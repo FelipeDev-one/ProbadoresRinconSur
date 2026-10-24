@@ -18,7 +18,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.AlertDialog
@@ -52,7 +51,7 @@ import cl.duoc.rinconsur.probadores.ui.theme.Dimens
 import cl.duoc.rinconsur.probadores.utils.RutValidator
 import cl.duoc.rinconsur.probadores.viewmodel.SeccionViewModel
 
-// Ajustes: datos de la sesión, pantalla de clientes, modo demo y menú de jefatura.
+
 @Composable
 fun AjustesScreen(navController: NavController, viewModel: SeccionViewModel) {
     val sesion by viewModel.sesion.collectAsStateWithLifecycle()
@@ -109,7 +108,7 @@ fun AjustesScreen(navController: NavController, viewModel: SeccionViewModel) {
                 }
             }
 
-            // RN-11: este bloque solo existe para la jefatura.
+
             if (esJefatura) {
                 Text("Jefatura", style = MaterialTheme.typography.titleMedium)
                 Card(Modifier.fillMaxWidth()) {
@@ -120,10 +119,7 @@ fun AjustesScreen(navController: NavController, viewModel: SeccionViewModel) {
                     OpcionAjuste(Icons.Filled.Tune, "Parámetros de la sección", "Tiempos de referencia, umbrales y ticket") {
                         navController.navigate(Ruta.Parametros.ruta)
                     }
-                    HorizontalDivider()
-                    OpcionAjuste(Icons.Filled.PlayArrow, "Cargar hora peak de ejemplo", "Simula la situación del Anexo 9 para probar alertas") {
-                        viewModel.cargarEscenarioDemo()
-                    }
+
                     HorizontalDivider()
                     OpcionAjuste(Icons.Filled.Lock, "Cerrar jornada", "Los turnos que siguen en espera quedan como \"Cierre de tienda\"") {
                         confirmarCierre = true
