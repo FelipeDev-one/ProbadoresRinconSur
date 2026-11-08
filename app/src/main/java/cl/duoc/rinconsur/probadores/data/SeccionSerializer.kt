@@ -2,6 +2,7 @@ package cl.duoc.rinconsur.probadores.data
 
 import cl.duoc.rinconsur.probadores.model.CambioEstado
 import cl.duoc.rinconsur.probadores.model.Colaborador
+import cl.duoc.rinconsur.probadores.model.Credencial
 import cl.duoc.rinconsur.probadores.model.EstadoProbador
 import cl.duoc.rinconsur.probadores.model.EstadoTurno
 import cl.duoc.rinconsur.probadores.model.MotivoAbandono
@@ -157,6 +158,29 @@ object SeccionSerializer {
             fechaHora = it.getLong("fechaHora"),
             colaborador = it.getString("colaborador"),
             motivo = it.stringONull("motivo")
+        )
+    }
+
+    fun credencialesATexto(items: List<Credencial>) = texto(items) {
+        JSONObject()
+            .put("rut", it.rut)
+            .put("hash", it.hash)
+            .put("sal", it.sal)
+            .put("hashRec", it.hashRecuperacion)
+            .put("salRec", it.salRecuperacion)
+            .put("intentos", it.intentosFallidos)
+            .put("bloqueadaHasta", it.bloqueadaHasta)
+    }
+
+    fun credencialesDesdeTexto(json: String?) = lista(json) {
+        Credencial(
+            rut = it.getString("rut"),
+            hash = it.getString("hash"),
+            sal = it.getString("sal"),
+            hashRecuperacion = it.getString("hashRec"),
+            salRecuperacion = it.getString("salRec"),
+            intentosFallidos = it.optInt("intentos", 0),
+            bloqueadaHasta = it.optLong("bloqueadaHasta", 0)
         )
     }
 

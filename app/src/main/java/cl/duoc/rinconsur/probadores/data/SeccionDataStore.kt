@@ -7,8 +7,10 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import cl.duoc.rinconsur.probadores.model.Credencial
 import cl.duoc.rinconsur.probadores.model.Seccion
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 val Context.dataStore by preferencesDataStore(name = "rincon_sur_probadores")
@@ -22,6 +24,12 @@ class SeccionDataStore(private val context: Context) {
     private val PARAMETROS = stringPreferencesKey("parametros")
     private val SESION_RUT = stringPreferencesKey("sesion_rut")
     private val MODO_DEMO = booleanPreferencesKey("modo_demo")
+
+    // Credenciales de jefatura y accesos recientes van aparte de la Seccion:
+    // así el mantenedor de colaboradores nunca las sobrescribe.
+    private val CREDENCIALES = stringPreferencesKey("credenciales")
+    private val RECIENTES = stringPreferencesKey("accesos_recientes")
+    private val MAX_RECIENTES = 4
 
     private fun leer(p: Preferences): Seccion? {
         if (p[PROBADORES] == null) return null
@@ -76,5 +84,48 @@ class SeccionDataStore(private val context: Context) {
 
     suspend fun guardarModoDemo(valor: Boolean) {
         context.dataStore.edit { it[MODO_DEMO] = valor }
+    }
+
+    // ----------------------------- CREDENCIALES -----------------------------
+
+    fun obtenerRutsConContrasena(): Flow<Set<String>> = context.dataStore.data.map { p ->
+        SeccionSerializer.credencialesDesdeTexto(p[CREDENCIALES]).map { it.rut }.toSet()
+    }
+
+    suspend fun obtenerCredencial(rut: String): Credencial? =
+        SeccionSerializer.credencialesDesdeTexto(context.dataStore.data.first()[CREDENCIALES]).find { it.rut == rut }
+
+    suspend fun guardarCredencial(credencial: Credencial) {
+        context.dataStore.edit { p ->
+            val otras = SeccionSerializer.credencialesDesdeTexto(p[CREDENCIALES]).filter { it.rut != credencial.rut }
+            p[CREDENCIALES] = SeccionSerializer.credencialesATexto(otras + credencial)
+        }
+    }
+
+    suspend fun eliminarCredencial(rut: String) {
+        context.dataStore.edit { p ->
+            val otras = SeccionSerializer.credencialesDesdeTexto(p[CREDENCIALES]).filter { it.rut != rut }
+            p[CREDENCIALES] = SeccionSerializer.credencialesATexto(otras)
+        }
+    }
+
+    // --------------------------- ACCESOS RECIENTES ---------------------------
+
+    fun obtenerRecientes(): Flow<List<String>> = context.dataStore.data.map { p ->
+        p[RECIENTES]?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
+    }
+
+    suspend fun agregarReciente(rut: String) {
+        context.dataStore.edit { p ->
+            val actuales = p[RECIENTES]?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
+            p[RECIENTES] = (listOf(rut) + actuales.filter { it != rut }).take(MAX_RECIENTES).joinToString(",")
+        }
+    }
+
+    suspend fun quitarReciente(rut: String) {
+        context.dataStore.edit { p ->
+            val actuales = p[RECIENTES]?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
+            p[RECIENTES] = actuales.filter { it != rut }.joinToString(",")
+        }
     }
 }
