@@ -268,6 +268,27 @@ class SeccionViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch { dataStore.guardarSesion(null) }
     }
 
+    // RUT de las jefaturas que ya crearon su contraseña.
+    val rutsConContrasena: StateFlow<Set<String>> = dataStore.obtenerRutsConContrasena()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
+
+    // Otra jefatura borra la contraseña: la próxima vez que ingrese, deberá crear una nueva.
+    fun restablecerContrasena(colaborador: Colaborador) {
+        val actual = sesion.value
+        if (actual == null || !actual.perfil.esJefatura) {
+            mostrarMensaje("Solo la jefatura puede restablecer contraseñas (RN-11)", true)
+            return
+        }
+        if (actual.rut == colaborador.rut) {
+            mostrarMensaje("No puede restablecer su propia contraseña", true)
+            return
+        }
+        viewModelScope.launch {
+            dataStore.eliminarCredencial(colaborador.rut)
+            mostrarMensaje("Contraseña de ${colaborador.nombreCorto} restablecida")
+        }
+    }
+
     fun consultarTurno(numeroTexto: String): ConsultaTurno {
         val numero = numeroTexto.trim().removePrefix("T-").removePrefix("t-").toIntOrNull()
             ?: return ConsultaTurno.Invalido("Ingrese solo el número de su turno, por ejemplo 24")
