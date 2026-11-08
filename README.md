@@ -57,6 +57,16 @@ Evaluación Parcial 2 · DSY1105 Desarrollo de Aplicaciones Móviles · Sección
 
 Fuera del horario de la tienda (10:00 a 21:00) se puede activar el modo demostración en Ajustes.
 
+### Ingreso de jefatura
+
+- Asistentes y vendedores(as) ingresan solo con su RUT. La jefatura, además, con contraseña.
+- La primera vez que una jefatura ingresa en el equipo, crea su contraseña (mínimo 6 caracteres, con letras y números)
+  y recibe un **código de recuperación** (`XXXX-XXXX`) que se muestra una sola vez.
+- Si olvida la contraseña: "¿Olvidó su contraseña?" → ingresa el código y elige una nueva (recibe un código nuevo).
+  Sin código, otra jefatura puede restablecerla en Ajustes → Colaboradores.
+- 5 intentos fallidos bloquean el ingreso por 1 minuto. Las contraseñas y códigos se guardan como hash PBKDF2 con sal.
+- La pantalla recuerda los últimos accesos del equipo para ingresar con un toque.
+
 ## Capturas
 
 Tomadas en un dispositivo físico.
