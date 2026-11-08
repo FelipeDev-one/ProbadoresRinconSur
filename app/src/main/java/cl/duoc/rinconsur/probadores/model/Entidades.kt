@@ -28,6 +28,20 @@ data class Colaborador(
                 else -> nombre
             }
         }
+
+    val primerNombre: String get() = nombre.trim().split(" ").firstOrNull { it.isNotBlank() } ?: nombre
+
+    // "Patricia Elena Morales Castillo" → "PM" (nombre + apellido paterno).
+    val iniciales: String
+        get() {
+            val partes = nombre.trim().split(" ").filter { it.isNotBlank() }
+            val apellido = when {
+                partes.size >= 3 -> partes[partes.size - 2]
+                partes.size == 2 -> partes[1]
+                else -> null
+            }
+            return listOfNotNull(partes.firstOrNull(), apellido).joinToString("") { it.first().uppercase() }
+        }
 }
 
 data class Turno(

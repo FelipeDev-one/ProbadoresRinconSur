@@ -1,12 +1,31 @@
 package cl.duoc.rinconsur.probadores.model
 
+// Pasos del ingreso: RUT para todos; la jefatura sigue a contraseña (o la crea / recupera).
+enum class PasoLogin { RUT, CONTRASENA, CREAR_CONTRASENA, RECUPERAR, CODIGO_NUEVO }
+
 data class LoginUiState(
+    val paso: PasoLogin = PasoLogin.RUT,
     val rut: String = "",
+    val nombre: String = "",
+    val contrasena: String = "",
+    val confirmacion: String = "",
+    val codigo: String = "",
+    val codigoGenerado: String? = null,
     val cargando: Boolean = false,
     val errores: LoginErrores = LoginErrores()
-)
+) {
+    private val datosNombre: Colaborador
+        get() = Colaborador(rut, nombre, Perfil.JEFATURA, TurnoLaboral.MANANA)
+    val primerNombre: String get() = datosNombre.primerNombre
+    val iniciales: String get() = datosNombre.iniciales
+}
 
-data class LoginErrores(val rut: String? = null)
+data class LoginErrores(
+    val rut: String? = null,
+    val contrasena: String? = null,
+    val confirmacion: String? = null,
+    val codigo: String? = null
+)
 
 enum class MotivoPreferente(val etiqueta: String) {
     MOVILIDAD("Movilidad reducida"),

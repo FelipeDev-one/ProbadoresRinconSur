@@ -27,6 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.VisualTransformation
 import cl.duoc.rinconsur.probadores.ui.theme.Dimens
 
 // =====================================================================
@@ -53,7 +54,10 @@ fun CampoTexto(
     lineasMinimas: Int = 1,
     estiloTexto: TextStyle? = null,
     opcionesTeclado: KeyboardOptions = KeyboardOptions.Default,
-    accionesTeclado: KeyboardActions = KeyboardActions.Default
+    accionesTeclado: KeyboardActions = KeyboardActions.Default,
+    transformacionVisual: VisualTransformation = VisualTransformation.None,
+    // Ícono/botón al final del campo (p. ej. mostrar contraseña). Si hay, reemplaza al ícono de error.
+    accionFinal: (@Composable () -> Unit)? = null
 ) {
     OutlinedTextField(
         value = valor,
@@ -62,7 +66,8 @@ fun CampoTexto(
         placeholder = placeholder?.let { texto -> { Text(texto) } },
         prefix = prefijo?.let { texto -> { Text(texto) } },
         leadingIcon = { Icon(icono, contentDescription = null) },
-        trailingIcon = if (error != null) {
+        visualTransformation = transformacionVisual,
+        trailingIcon = accionFinal ?: if (error != null) {
             { Icon(Icons.Filled.Error, contentDescription = "Error", tint = MaterialTheme.colorScheme.error) }
         } else null,
         isError = error != null,
