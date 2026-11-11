@@ -38,7 +38,8 @@ Evaluación Parcial 2 · DSY1105 Desarrollo de Aplicaciones Móviles · Sección
 - Kotlin, Jetpack Compose y Material 3
 - Arquitectura MVVM con StateFlow
 - Navigation Compose
-- DataStore Preferences
+- Room (entidades, DAOs y relaciones) para los datos del negocio, con un repositorio entre los ViewModels y la base de datos
+- DataStore Preferences solo para la sesión y las preferencias del equipo
 - Cámara y galería con ActivityResultLauncher y FileProvider
 - Vibración del dispositivo
 
@@ -91,7 +92,8 @@ Tomadas en un dispositivo físico.
 
 ```
 model/        entidades y reglas de negocio
-data/         almacenamiento local y datos de ejemplo
+data/         repositorio, preferencias y datos de ejemplo
+data/local/   base de datos Room: entidades, relaciones y DAOs
 viewmodel/    estado y validaciones de cada pantalla
 navigation/   rutas y navegación
 permisos/     solicitud del permiso de cámara
