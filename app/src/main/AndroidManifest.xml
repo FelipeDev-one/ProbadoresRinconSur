@@ -20,6 +20,7 @@
 
     <!-- allowBackup="false": los RUT y nombres de colaboradores no salen del equipo (RNF-06). -->
     <application
+        android:name=".ProbadoresApp"
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"

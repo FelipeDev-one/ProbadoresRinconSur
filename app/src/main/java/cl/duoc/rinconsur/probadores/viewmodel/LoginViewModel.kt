@@ -3,7 +3,7 @@ package cl.duoc.rinconsur.probadores.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import cl.duoc.rinconsur.probadores.data.SeccionDataStore
+import cl.duoc.rinconsur.probadores.ProbadoresApp
 import cl.duoc.rinconsur.probadores.model.Colaborador
 import cl.duoc.rinconsur.probadores.model.Credencial
 import cl.duoc.rinconsur.probadores.model.LoginErrores
@@ -33,14 +33,15 @@ import kotlinx.coroutines.withContext
 // =====================================================================
 
 class LoginViewModel(application: Application) : AndroidViewModel(application) {
-    private val dataStore = SeccionDataStore(application)
+    private val repositorio = (application as ProbadoresApp).repositorio
+    private val preferencias = (application as ProbadoresApp).preferencias
 
     private val _estado = MutableStateFlow(LoginUiState())
     val estado: StateFlow<LoginUiState> = _estado
 
     // Accesos recientes en este equipo (solo colaboradores que siguen activos).
     val recientes: StateFlow<List<Colaborador>> =
-        combine(dataStore.obtenerSeccion(), dataStore.obtenerRecientes()) { s, ruts ->
+        combine(repositorio.obtenerSeccion(), preferencias.obtenerRecientes()) { s, ruts ->
             val colaboradores = s?.colaboradores ?: emptyList()
             ruts.mapNotNull { rut -> colaboradores.find { it.rut == rut && it.activo } }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -84,7 +85,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun quitarReciente(colaborador: Colaborador) {
-        viewModelScope.launch { dataStore.quitarReciente(colaborador.rut) }
+        viewModelScope.launch { preferencias.quitarReciente(colaborador.rut) }
     }
 
     // -------------------------------- PASO 1 --------------------------------
@@ -104,7 +105,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _estado.update { it.copy(cargando = true) }
             val rut = RutValidator.normalizar(actual.rut)
-            val colaborador = dataStore.obtenerSeccion().first()?.colaboradores?.find { it.rut == rut }
+            val colaborador = repositorio.obtenerSeccion().first()?.colaboradores?.find { it.rut == rut }
             val error = when {
                 colaborador == null -> "Este RUT no está registrado como colaborador"
                 !colaborador.activo -> "Colaborador inactivo: consulte con la jefatura (RN-13)"
@@ -115,7 +116,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                     _estado.update { it.copy(cargando = false, errores = LoginErrores(rut = error)) }
                 !colaborador.perfil.esJefatura -> finalizar(rut, onExito)
                 else -> {
-                    val tieneContrasena = dataStore.obtenerCredencial(rut) != null
+                    val tieneContrasena = repositorio.obtenerCredencial(rut) != null
                     _estado.update {
                         it.copy(
                             cargando = false,
@@ -141,7 +142,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _estado.update { it.copy(cargando = true) }
             val rut = RutValidator.normalizar(actual.rut)
-            val credencial = dataStore.obtenerCredencial(rut)
+            val credencial = repositorio.obtenerCredencial(rut)
             if (credencial == null) {
                 // Otra jefatura la restableció mientras tanto: se pide crear una nueva.
                 _estado.update { it.copy(cargando = false, paso = PasoLogin.CREAR_CONTRASENA, contrasena = "") }
@@ -160,7 +161,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
             _estado.update { it.copy(cargando = true) }
             val rut = RutValidator.normalizar(actual.rut)
             // Si ya existe (p. ej. se creó desde otro intento), no se pisa: se pide ingresar.
-            if (dataStore.obtenerCredencial(rut) != null) {
+            if (repositorio.obtenerCredencial(rut) != null) {
                 _estado.update { it.copy(cargando = false, paso = PasoLogin.CONTRASENA, contrasena = "", confirmacion = "") }
                 return@launch
             }
@@ -182,7 +183,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _estado.update { it.copy(cargando = true) }
             val rut = RutValidator.normalizar(actual.rut)
-            val credencial = dataStore.obtenerCredencial(rut)
+            val credencial = repositorio.obtenerCredencial(rut)
             if (credencial == null) {
                 _estado.update { it.copy(cargando = false, paso = PasoLogin.CREAR_CONTRASENA, codigo = "") }
                 return@launch
@@ -218,11 +219,11 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
 
         val correcto = withContext(Dispatchers.Default) { verificar(credencial) }
         if (correcto) {
-            dataStore.guardarCredencial(ReglasAcceso.registrarExito(credencial))
+            repositorio.guardarCredencial(ReglasAcceso.registrarExito(credencial))
             return null
         }
         val actualizada = ReglasAcceso.registrarFallo(credencial, ahora)
-        dataStore.guardarCredencial(actualizada)
+        repositorio.guardarCredencial(actualizada)
         return if (actualizada.bloqueadaHasta > ahora) {
             "Demasiados intentos. Espere ${ReglasAcceso.MILIS_BLOQUEO / 1000} segundos e intente de nuevo."
         } else {
@@ -233,7 +234,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
 
     private suspend fun guardarNueva(rut: String, contrasena: String) {
         val (credencial, codigo) = withContext(Dispatchers.Default) { ReglasAcceso.crear(rut, contrasena) }
-        dataStore.guardarCredencial(credencial)
+        repositorio.guardarCredencial(credencial)
         _estado.update {
             it.copy(
                 cargando = false,
@@ -248,8 +249,8 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private suspend fun finalizar(rut: String, onExito: () -> Unit) {
-        dataStore.guardarSesion(rut)
-        dataStore.agregarReciente(rut)
+        preferencias.guardarSesion(rut)
+        preferencias.agregarReciente(rut)
         _estado.value = LoginUiState()
         onExito()
     }

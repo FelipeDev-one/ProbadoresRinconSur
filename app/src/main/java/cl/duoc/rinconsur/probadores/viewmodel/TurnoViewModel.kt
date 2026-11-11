@@ -3,7 +3,7 @@ package cl.duoc.rinconsur.probadores.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import cl.duoc.rinconsur.probadores.data.SeccionDataStore
+import cl.duoc.rinconsur.probadores.ProbadoresApp
 import cl.duoc.rinconsur.probadores.model.EstimadorEspera
 import cl.duoc.rinconsur.probadores.model.MotivoPreferente
 import cl.duoc.rinconsur.probadores.model.ReglaNegocioException
@@ -18,7 +18,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 class TurnoViewModel(application: Application) : AndroidViewModel(application) {
-    private val dataStore = SeccionDataStore(application)
+    private val repositorio = (application as ProbadoresApp).repositorio
+    private val preferencias = (application as ProbadoresApp).preferencias
 
     private val _estado = MutableStateFlow(TurnoUiState())
     val estado: StateFlow<TurnoUiState> = _estado
@@ -27,7 +28,7 @@ class TurnoViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         viewModelScope.launch {
-            maxPrendas = dataStore.obtenerSeccion().first()?.parametros?.maxPrendas ?: 6
+            maxPrendas = repositorio.obtenerSeccion().first()?.parametros?.maxPrendas ?: 6
         }
     }
 
@@ -76,7 +77,7 @@ class TurnoViewModel(application: Application) : AndroidViewModel(application) {
     fun registrar(ignorarHorario: Boolean, onExito: (codigo: String, estimado: Int?) -> Unit) {
         if (!validarFormulario()) return
         viewModelScope.launch {
-            val rut = dataStore.obtenerSesion().first()
+            val rut = preferencias.obtenerSesion().first()
             if (rut == null) {
                 _estado.update { it.copy(errores = it.errores.copy(general = "Su sesión terminó")) }
                 return@launch
@@ -84,7 +85,7 @@ class TurnoViewModel(application: Application) : AndroidViewModel(application) {
             _estado.update { it.copy(guardando = true) }
             try {
                 val e = _estado.value
-                val (codigo, estimado) = dataStore.actualizar { s ->
+                val (codigo, estimado) = repositorio.actualizar { s ->
                     val ahora = System.currentTimeMillis()
                     val (nueva, turno) = ReglasSeccion.registrarTurno(
                         s, e.prendas.toInt(), e.preferente, rut, ahora, ignorarHorario

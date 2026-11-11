@@ -3,7 +3,7 @@ package cl.duoc.rinconsur.probadores.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import cl.duoc.rinconsur.probadores.data.SeccionDataStore
+import cl.duoc.rinconsur.probadores.ProbadoresApp
 import cl.duoc.rinconsur.probadores.model.Colaborador
 import cl.duoc.rinconsur.probadores.model.ColaboradorErrores
 import cl.duoc.rinconsur.probadores.model.ColaboradorUiState
@@ -20,7 +20,8 @@ import kotlinx.coroutines.launch
 
 // Mantenedor de colaboradores: solo jefatura (RN-11).
 class ColaboradorViewModel(application: Application) : AndroidViewModel(application) {
-    private val dataStore = SeccionDataStore(application)
+    private val repositorio = (application as ProbadoresApp).repositorio
+    private val preferencias = (application as ProbadoresApp).preferencias
 
     private val _estado = MutableStateFlow(ColaboradorUiState())
     val estado: StateFlow<ColaboradorUiState> = _estado
@@ -37,7 +38,7 @@ class ColaboradorViewModel(application: Application) : AndroidViewModel(applicat
             return
         }
         viewModelScope.launch {
-            val c = dataStore.obtenerSeccion().first()?.colaboradores?.find { it.rut == rut } ?: return@launch
+            val c = repositorio.obtenerSeccion().first()?.colaboradores?.find { it.rut == rut } ?: return@launch
             _estado.value = ColaboradorUiState(
                 esNuevo = false,
                 rut = RutValidator.formatear(c.rut),
@@ -100,7 +101,7 @@ class ColaboradorViewModel(application: Application) : AndroidViewModel(applicat
         val turno = e.turno ?: return
         viewModelScope.launch {
             try {
-                val rutJefatura = dataStore.obtenerSesion().first() ?: throw ReglaNegocioException("Su sesión terminó")
+                val rutJefatura = preferencias.obtenerSesion().first() ?: throw ReglaNegocioException("Su sesión terminó")
                 val colaborador = Colaborador(
                     rut = RutValidator.normalizar(e.rut),
                     nombre = e.nombre.trim().split(" ").filter { it.isNotBlank() }.joinToString(" "),
@@ -108,7 +109,7 @@ class ColaboradorViewModel(application: Application) : AndroidViewModel(applicat
                     turno = turno,
                     activo = e.activo
                 )
-                dataStore.actualizar { s ->
+                repositorio.actualizar { s ->
                     ReglasSeccion.guardarColaborador(s, colaborador, rutJefatura, e.esNuevo) to Unit
                 }
                 onExito()

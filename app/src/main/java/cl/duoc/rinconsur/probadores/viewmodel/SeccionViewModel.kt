@@ -4,7 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import cl.duoc.rinconsur.probadores.data.DatosEjemplo
-import cl.duoc.rinconsur.probadores.data.SeccionDataStore
+import cl.duoc.rinconsur.probadores.ProbadoresApp
 import cl.duoc.rinconsur.probadores.model.Alerta
 import cl.duoc.rinconsur.probadores.model.Colaborador
 import cl.duoc.rinconsur.probadores.model.EstadoProbador
@@ -71,7 +71,8 @@ data class PanelUiState(
 data class Mensaje(val texto: String, val esError: Boolean)
 
 class SeccionViewModel(application: Application) : AndroidViewModel(application) {
-    private val dataStore = SeccionDataStore(application)
+    private val repositorio = (application as ProbadoresApp).repositorio
+    private val preferencias = (application as ProbadoresApp).preferencias
 
     val ahora: StateFlow<Long> = flow {
         while (true) {
@@ -80,13 +81,13 @@ class SeccionViewModel(application: Application) : AndroidViewModel(application)
         }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, System.currentTimeMillis())
 
-    val seccion: StateFlow<Seccion?> = dataStore.obtenerSeccion()
+    val seccion: StateFlow<Seccion?> = repositorio.obtenerSeccion()
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
-    val modoDemo: StateFlow<Boolean> = dataStore.obtenerModoDemo()
+    val modoDemo: StateFlow<Boolean> = preferencias.obtenerModoDemo()
         .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
-    val sesion: StateFlow<Colaborador?> = combine(seccion, dataStore.obtenerSesion()) { s, rut ->
+    val sesion: StateFlow<Colaborador?> = combine(seccion, preferencias.obtenerSesion()) { s, rut ->
         s?.colaboradores?.find { it.rut == rut && it.activo }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
@@ -103,7 +104,7 @@ class SeccionViewModel(application: Application) : AndroidViewModel(application)
 
     init {
         viewModelScope.launch {
-            dataStore.inicializarSiFalta { DatosEjemplo.crear(System.currentTimeMillis()) }
+            repositorio.inicializarSiFalta { DatosEjemplo.crear(System.currentTimeMillis()) }
             seccion.filterNotNull().first()
             delay(1_200)
             _cargando.value = false
@@ -171,7 +172,7 @@ class SeccionViewModel(application: Application) : AndroidViewModel(application)
         }
         viewModelScope.launch {
             try {
-                dataStore.actualizar { s -> operacion(s, rut, System.currentTimeMillis()) to Unit }
+                repositorio.actualizar { s -> operacion(s, rut, System.currentTimeMillis()) to Unit }
                 textoExito?.let { mostrarMensaje(it) }
             } catch (e: ReglaNegocioException) {
                 mostrarMensaje(e.message ?: "No se pudo completar la acción.", true)
@@ -243,7 +244,7 @@ class SeccionViewModel(application: Application) : AndroidViewModel(application)
         val rut = sesion.value?.rut ?: return
         viewModelScope.launch {
             try {
-                val cerrados = dataStore.actualizar { s ->
+                val cerrados = repositorio.actualizar { s ->
                     ReglasSeccion.cerrarJornada(s, rut, System.currentTimeMillis())
                 }
                 mostrarMensaje("Jornada cerrada: $cerrados turno(s) quedaron como \"Cierre de tienda\"")
@@ -259,17 +260,17 @@ class SeccionViewModel(application: Application) : AndroidViewModel(application)
 
     fun cambiarModoDemo(valor: Boolean) {
         viewModelScope.launch {
-            dataStore.guardarModoDemo(valor)
+            preferencias.guardarModoDemo(valor)
             mostrarMensaje(if (valor) "Modo demostración activado" else "Modo demostración desactivado")
         }
     }
 
     fun cerrarSesion() {
-        viewModelScope.launch { dataStore.guardarSesion(null) }
+        viewModelScope.launch { preferencias.guardarSesion(null) }
     }
 
     // RUT de las jefaturas que ya crearon su contraseña.
-    val rutsConContrasena: StateFlow<Set<String>> = dataStore.obtenerRutsConContrasena()
+    val rutsConContrasena: StateFlow<Set<String>> = repositorio.obtenerRutsConContrasena()
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
 
     // Otra jefatura borra la contraseña: la próxima vez que ingrese, deberá crear una nueva.
@@ -284,7 +285,7 @@ class SeccionViewModel(application: Application) : AndroidViewModel(application)
             return
         }
         viewModelScope.launch {
-            dataStore.eliminarCredencial(colaborador.rut)
+            repositorio.eliminarCredencial(colaborador.rut)
             mostrarMensaje("Contraseña de ${colaborador.nombreCorto} restablecida")
         }
     }

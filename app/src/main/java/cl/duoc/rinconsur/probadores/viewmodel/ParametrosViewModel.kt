@@ -3,7 +3,7 @@ package cl.duoc.rinconsur.probadores.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import cl.duoc.rinconsur.probadores.data.SeccionDataStore
+import cl.duoc.rinconsur.probadores.ProbadoresApp
 import cl.duoc.rinconsur.probadores.model.ParametrosErrores
 import cl.duoc.rinconsur.probadores.model.ParametrosUiState
 import cl.duoc.rinconsur.probadores.model.ReglaNegocioException
@@ -16,14 +16,15 @@ import kotlinx.coroutines.launch
 
 // Ajuste de parámetros de la sección por la jefatura (RD-05).
 class ParametrosViewModel(application: Application) : AndroidViewModel(application) {
-    private val dataStore = SeccionDataStore(application)
+    private val repositorio = (application as ProbadoresApp).repositorio
+    private val preferencias = (application as ProbadoresApp).preferencias
 
     private val _estado = MutableStateFlow(ParametrosUiState())
     val estado: StateFlow<ParametrosUiState> = _estado
 
     init {
         viewModelScope.launch {
-            val p = dataStore.obtenerSeccion().first()?.parametros ?: return@launch
+            val p = repositorio.obtenerSeccion().first()?.parametros ?: return@launch
             _estado.value = ParametrosUiState(
                 maxPrendas = p.maxPrendas.toString(),
                 tiempoReferenciaUso = p.tiempoReferenciaUso.toString(),
@@ -91,9 +92,9 @@ class ParametrosViewModel(application: Application) : AndroidViewModel(applicati
         if (!validarFormulario()) return
         viewModelScope.launch {
             try {
-                val rut = dataStore.obtenerSesion().first() ?: throw ReglaNegocioException("Su sesión terminó")
+                val rut = preferencias.obtenerSesion().first() ?: throw ReglaNegocioException("Su sesión terminó")
                 val e = _estado.value
-                dataStore.actualizar { s ->
+                repositorio.actualizar { s ->
                     val nuevos = s.parametros.copy(
                         maxPrendas = e.maxPrendas.toInt(),
                         tiempoReferenciaUso = e.tiempoReferenciaUso.toInt(),

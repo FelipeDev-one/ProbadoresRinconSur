@@ -5,7 +5,7 @@ import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
-import cl.duoc.rinconsur.probadores.data.SeccionDataStore
+import cl.duoc.rinconsur.probadores.ProbadoresApp
 import cl.duoc.rinconsur.probadores.model.FueraServicioUiState
 import cl.duoc.rinconsur.probadores.model.ReglaNegocioException
 import cl.duoc.rinconsur.probadores.model.ReglasSeccion
@@ -31,7 +31,8 @@ class FueraServicioViewModel(
     application: Application,
     private val guardado: SavedStateHandle
 ) : AndroidViewModel(application) {
-    private val dataStore = SeccionDataStore(application)
+    private val repositorio = (application as ProbadoresApp).repositorio
+    private val preferencias = (application as ProbadoresApp).preferencias
 
     private val _estado = MutableStateFlow(
         FueraServicioUiState(
@@ -134,9 +135,9 @@ class FueraServicioViewModel(
         viewModelScope.launch {
             _estado.update { it.copy(guardando = true, errores = it.errores.copy(general = null)) }
             try {
-                val rut = dataStore.obtenerSesion().first() ?: throw ReglaNegocioException("Su sesión terminó")
+                val rut = preferencias.obtenerSesion().first() ?: throw ReglaNegocioException("Su sesión terminó")
                 val e = _estado.value
-                dataStore.actualizar { s ->
+                repositorio.actualizar { s ->
                     ReglasSeccion.marcarFueraDeServicio(
                         s, e.codigo, e.motivo, e.fotoRuta, rut, System.currentTimeMillis()
                     ) to Unit
