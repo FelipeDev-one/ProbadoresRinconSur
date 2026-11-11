@@ -112,8 +112,9 @@ object DatosEjemplo {
             registroTermino = if (fin != null) rut else null
         )
         return listOf(
-            uso(1, "P-03", 84, "17:12", "17:24", 4, 2, RUT_FUENTES),
-            uso(2, "P-05", 85, "17:15", "17:33", 5, 5, RUT_DIAZ),
+            // Los usos 1 y 2 venían de turnos anteriores a este registro (T-84 y T-85): sin turno asociado.
+            uso(1, "P-03", null, "17:12", "17:24", 4, 2, RUT_FUENTES),
+            uso(2, "P-05", null, "17:15", "17:33", 5, 5, RUT_DIAZ),
             uso(3, "P-04", 87, "17:31", null, 4, null, RUT_FUENTES),
             uso(4, "P-08", 88, "17:39", null, 2, null, RUT_FUENTES),
             uso(5, "P-01", 90, "17:42", null, 3, null, RUT_DIAZ),
