@@ -19,14 +19,17 @@ import cl.duoc.rinconsur.probadores.R
 @Composable
 fun BarraConVolver(
     titulo: String,
-    onVolver: () -> Unit,
+    onVolver: (() -> Unit)?,
     acciones: @Composable RowScope.() -> Unit = {}
 ) {
     TopAppBar(
         title = { Text(titulo) },
+        // Sin onVolver (pantalla inicial) no se dibuja la flecha.
         navigationIcon = {
-            IconButton(onClick = onVolver) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.cd_volver))
+            if (onVolver != null) {
+                IconButton(onClick = onVolver) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.cd_volver))
+                }
             }
         },
         actions = acciones,
