@@ -138,10 +138,12 @@ fun ProbadoresScreen(navController: NavController, viewModel: SeccionViewModel) 
                 ProbadorCard(vista, onClick = { seleccionado = vista.probador.codigo })
             }
 
-            // Ubicación física de cada probador (Aclaración nº 2)
+            // Resumen de los probadores registrados en la sección (se administran en Ajustes).
             item(span = { GridItemSpan(maxLineSpan) }) {
+                val accesibles = p.probadores.filter { it.probador.tipo == TipoProbador.ACCESIBLE }
                 Text(
-                    "P-01 a P-04 lado mesón · P-05 a P-07 lado espejo · P-08 al fondo (accesible)",
+                    "${p.probadores.size} probador(es) en la sección" +
+                        if (accesibles.isEmpty()) "" else " · accesible(s): ${accesibles.joinToString { it.probador.codigo }}",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 80.dp)

@@ -18,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.MeetingRoom
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.AlertDialog
@@ -114,6 +115,10 @@ fun AjustesScreen(navController: NavController, viewModel: SeccionViewModel) {
                 Card(Modifier.fillMaxWidth()) {
                     OpcionAjuste(Icons.Filled.Badge, "Colaboradores", "Altas, perfiles y activación") {
                         navController.navigate(Ruta.Colaboradores.ruta)
+                    }
+                    HorizontalDivider()
+                    OpcionAjuste(Icons.Filled.MeetingRoom, "Probadores de la sección", "Agregar, cambiar el tipo o quitar probadores") {
+                        navController.navigate(Ruta.GestionProbadores.ruta)
                     }
                     HorizontalDivider()
                     OpcionAjuste(Icons.Filled.Tune, "Parámetros de la sección", "Tiempos de referencia, umbrales y ticket") {

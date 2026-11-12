@@ -3,7 +3,6 @@ package cl.duoc.rinconsur.probadores.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import cl.duoc.rinconsur.probadores.data.DatosEjemplo
 import cl.duoc.rinconsur.probadores.ProbadoresApp
 import cl.duoc.rinconsur.probadores.model.Alerta
 import cl.duoc.rinconsur.probadores.model.Colaborador
@@ -20,6 +19,7 @@ import cl.duoc.rinconsur.probadores.model.Probador
 import cl.duoc.rinconsur.probadores.model.ReglaNegocioException
 import cl.duoc.rinconsur.probadores.model.ReglasSeccion
 import cl.duoc.rinconsur.probadores.model.Seccion
+import cl.duoc.rinconsur.probadores.model.TipoProbador
 import cl.duoc.rinconsur.probadores.model.Turno
 import cl.duoc.rinconsur.probadores.model.Uso
 import cl.duoc.rinconsur.probadores.model.UsoSinFilaErrores
@@ -30,9 +30,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.filterNotNull
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -70,6 +69,13 @@ data class PanelUiState(
 
 data class Mensaje(val texto: String, val esError: Boolean)
 
+enum class EstadoApp { CARGANDO, SIN_CONFIGURAR, LISTA }
+
+private data class Arranque(val seccion: Seccion?, val rutSesion: String?) {
+    fun colaboradorConSesion(): Colaborador? =
+        seccion?.colaboradores?.find { it.rut == rutSesion && it.activo }
+}
+
 class SeccionViewModel(application: Application) : AndroidViewModel(application) {
     private val repositorio = (application as ProbadoresApp).repositorio
     private val preferencias = (application as ProbadoresApp).preferencias
@@ -81,18 +87,34 @@ class SeccionViewModel(application: Application) : AndroidViewModel(application)
         }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, System.currentTimeMillis())
 
-    val seccion: StateFlow<Seccion?> = repositorio.obtenerSeccion()
+    // Primera lectura completa: la sección (Room) y el RUT con sesión abierta (DataStore).
+    // Mientras sea null, la app sigue en la pantalla de carga.
+    private val arranque: StateFlow<Arranque?> =
+        combine(repositorio.obtenerSeccion(), preferencias.obtenerSesion()) { s, rut -> Arranque(s, rut) }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    val seccion: StateFlow<Seccion?> = arranque.map { it?.seccion }
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     val modoDemo: StateFlow<Boolean> = preferencias.obtenerModoDemo()
         .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
-    val sesion: StateFlow<Colaborador?> = combine(seccion, preferencias.obtenerSesion()) { s, rut ->
-        s?.colaboradores?.find { it.rut == rut && it.activo }
-    }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    val sesion: StateFlow<Colaborador?> = arranque.map { it?.colaboradorConSesion() }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
-    private val _cargando = MutableStateFlow(true)
-    val cargando: StateFlow<Boolean> = _cargando
+    private val presentacionLista = MutableStateFlow(false)
+
+    // CARGANDO → SIN_CONFIGURAR (app vacía: falta crear la jefatura y los probadores) o LISTA.
+    val estadoApp: StateFlow<EstadoApp> = combine(arranque, presentacionLista) { a, lista ->
+        when {
+            a == null || !lista -> EstadoApp.CARGANDO
+            !ReglasSeccion.estaConfigurada(a.seccion) -> EstadoApp.SIN_CONFIGURAR
+            else -> EstadoApp.LISTA
+        }
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, EstadoApp.CARGANDO)
+
+    // Se consulta una sola vez, al decidir en qué pantalla abre la app.
+    fun haySesionAlAbrir(): Boolean = arranque.value?.colaboradorConSesion() != null
 
     private val _mensaje = MutableStateFlow<Mensaje?>(null)
     val mensaje: StateFlow<Mensaje?> = _mensaje
@@ -104,10 +126,8 @@ class SeccionViewModel(application: Application) : AndroidViewModel(application)
 
     init {
         viewModelScope.launch {
-            repositorio.inicializarSiFalta { DatosEjemplo.crear(System.currentTimeMillis()) }
-            seccion.filterNotNull().first()
             delay(1_200)
-            _cargando.value = false
+            presentacionLista.value = true
         }
     }
 
@@ -240,6 +260,21 @@ class SeccionViewModel(application: Application) : AndroidViewModel(application)
         ReglasSeccion.habilitar(s, codigo, rut, t)
     }
 
+    // ---------------------- MANTENEDOR DE PROBADORES (jefatura) ----------------------
+
+    fun agregarProbador(tipo: TipoProbador) = ejecutar("Probador agregado") { s, rut, t ->
+        ReglasSeccion.agregarProbador(s, tipo, rut, t).first
+    }
+
+    fun cambiarTipoProbador(codigo: String, tipo: TipoProbador) =
+        ejecutar("$codigo ahora es ${tipo.etiqueta.lowercase()}") { s, rut, _ ->
+            ReglasSeccion.cambiarTipoProbador(s, codigo, tipo, rut)
+        }
+
+    fun eliminarProbador(codigo: String) = ejecutar("$codigo eliminado") { s, rut, _ ->
+        ReglasSeccion.eliminarProbador(s, codigo, rut)
+    }
+
     fun cerrarJornada() {
         val rut = sesion.value?.rut ?: return
         viewModelScope.launch {
@@ -252,10 +287,6 @@ class SeccionViewModel(application: Application) : AndroidViewModel(application)
                 mostrarMensaje(e.message ?: "No se pudo cerrar la jornada.", true)
             }
         }
-    }
-
-    fun cargarEscenarioDemo() = ejecutar("Escenario de hora peak cargado") { s, rut, t ->
-        DatosEjemplo.escenarioPeak(s, t, rut)
     }
 
     fun cambiarModoDemo(valor: Boolean) {

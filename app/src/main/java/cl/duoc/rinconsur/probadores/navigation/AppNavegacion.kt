@@ -17,6 +17,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -37,26 +38,30 @@ import cl.duoc.rinconsur.probadores.ui.screens.ColaboradorFormScreen
 import cl.duoc.rinconsur.probadores.ui.screens.ColaboradoresScreen
 import cl.duoc.rinconsur.probadores.ui.screens.FilaScreen
 import cl.duoc.rinconsur.probadores.ui.screens.FueraServicioScreen
-import cl.duoc.rinconsur.probadores.ui.screens.InicioScreen
+import cl.duoc.rinconsur.probadores.ui.screens.ConfiguracionInicialScreen
+import cl.duoc.rinconsur.probadores.ui.screens.GestionProbadoresScreen
 import cl.duoc.rinconsur.probadores.ui.screens.LoginScreen
 import cl.duoc.rinconsur.probadores.ui.screens.NuevoTurnoScreen
 import cl.duoc.rinconsur.probadores.ui.screens.ParametrosScreen
 import cl.duoc.rinconsur.probadores.ui.screens.ProbadoresScreen
 import cl.duoc.rinconsur.probadores.ui.screens.ResumenScreen
 import cl.duoc.rinconsur.probadores.ui.screens.TurnoConfirmadoScreen
+import cl.duoc.rinconsur.probadores.viewmodel.EstadoApp
 import cl.duoc.rinconsur.probadores.viewmodel.SeccionViewModel
 import kotlinx.coroutines.delay
 
 // =====================================================================
 //  AppNavegacion — mapa de pantallas de la app
 //  ---------------------------------------------------------------------
-//               ┌─ Cliente (sin sesión: espera y "consultar mi turno")
-//   Inicio ─────┤
-//               └─ Login ─▶ Probadores ⇄ Fila ⇄ Resumen ⇄ Ajustes   (barra inferior)
-//                              │          │                  │
-//                     FueraServicio   NuevoTurno ─▶      Colaboradores ─▶ ColaboradorForm
-//                       (cámara)      TurnoConfirmado    Parámetros
+//   App vacía ─▶ Configuración inicial (crea la jefatura y los probadores)
 //
+//   Login ──┬─ "¿Es cliente?" ─▶ Cliente (sin sesión: espera y "consultar mi turno")
+//  (inicio) └─ RUT + clave ───▶ Probadores ⇄ Fila ⇄ Resumen ⇄ Ajustes   (barra inferior)
+//                                  │          │                  │
+//                         FueraServicio   NuevoTurno ─▶      Colaboradores ─▶ ColaboradorForm
+//                           (cámara)      TurnoConfirmado    Parámetros · Gestión de probadores
+//
+//  Con sesión abierta, la app salta el Login y abre directo en el panel.
 //  SeccionViewModel se crea UNA vez aquí y se comparte con todas las pantallas
 //  del panel: así todos ven la misma información en tiempo real (Aclaración nº 7).
 // =====================================================================
@@ -66,25 +71,36 @@ fun AppNavegacion() {
     val navController = rememberNavController()
 
     val seccionViewModel: SeccionViewModel = viewModel()
-    val cargando by seccionViewModel.cargando.collectAsStateWithLifecycle()
+    val estadoApp by seccionViewModel.estadoApp.collectAsStateWithLifecycle()
     val sesion by seccionViewModel.sesion.collectAsStateWithLifecycle()
     val mensaje by seccionViewModel.mensaje.collectAsStateWithLifecycle()
 
-    // Pantalla de carga mientras se leen (o crean) los datos de ejemplo.
-    if (cargando) {
-        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.primary) {
-            Column(
-                Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(stringResource(R.string.marca), style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.onPrimary)
-                CircularProgressIndicator(color = MaterialTheme.colorScheme.onPrimary)
-                Text(stringResource(R.string.cargando_seccion), color = MaterialTheme.colorScheme.onPrimary)
+    when (estadoApp) {
+        // Pantalla de carga mientras se lee la base de datos.
+        EstadoApp.CARGANDO -> {
+            Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.primary) {
+                Column(
+                    Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(stringResource(R.string.marca), style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.onPrimary)
+                    CircularProgressIndicator(color = MaterialTheme.colorScheme.onPrimary)
+                    Text(stringResource(R.string.cargando_seccion), color = MaterialTheme.colorScheme.onPrimary)
+                }
             }
+            return
         }
-        return
+        // Primera vez: no hay jefatura ni probadores. Nada más se puede hacer hasta crearlos.
+        EstadoApp.SIN_CONFIGURAR -> {
+            ConfiguracionInicialScreen()
+            return
+        }
+        EstadoApp.LISTA -> Unit
     }
+
+    // Se decide una sola vez: con sesión abierta se entra directo al panel.
+    val inicio = remember { if (seccionViewModel.haySesionAlAbrir()) Ruta.Probadores.ruta else Ruta.Login.ruta }
 
     // ------------------------- GUARDIAS DE ACCESO -------------------------
     // RF-10 / RN-11: sin sesión no se entra al panel; sin perfil de jefatura
@@ -98,8 +114,9 @@ fun AppNavegacion() {
             // Se espera un instante: justo después de ingresar, la sesión tarda unos
             // milisegundos en llegar desde DataStore. Si llega, este efecto se cancela solo.
             delay(400)
+            // Sin sesión se vuelve al ingreso y se vacía la pila: "atrás" no regresa al panel.
             navController.navigate(Ruta.Login.ruta) {
-                popUpTo(Ruta.Inicio.ruta)
+                popUpTo(navController.graph.id) { inclusive = true }
                 launchSingleTop = true
             }
         } else if (ruta.soloJefatura && actual != null && !actual.perfil.esJefatura) {
@@ -111,7 +128,7 @@ fun AppNavegacion() {
     Box(Modifier.fillMaxSize()) {
         NavHost(
             navController = navController,
-            startDestination = Ruta.Inicio.ruta,
+            startDestination = inicio,
             enterTransition = {
                 slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Start, tween(300)) + fadeIn(tween(300))
             },
@@ -122,28 +139,19 @@ fun AppNavegacion() {
             }
         ) {
             // ----------------------------- SIN SESIÓN -----------------------------
-            composable(Ruta.Inicio.ruta) {
-                InicioScreen(
-                    haySesion = sesion != null,
+            composable(Ruta.Login.ruta) {
+                LoginScreen(
                     onCliente = { navController.navigate(Ruta.Cliente.ruta) },
-                    onColaborador = {
-                        navController.navigate(if (sesion != null) Ruta.Probadores.ruta else Ruta.Login.ruta)
+                    onIngreso = {
+                        navController.navigate(Ruta.Probadores.ruta) {
+                            popUpTo(navController.graph.id) { inclusive = true }
+                            launchSingleTop = true
+                        }
                     }
                 )
             }
             composable(Ruta.Cliente.ruta) {
                 ClienteScreen(seccionViewModel, onVolver = { navController.navigateUp() })
-            }
-            composable(Ruta.Login.ruta) {
-                LoginScreen(
-                    onVolver = { navController.navigateUp() },
-                    onIngreso = {
-                        navController.navigate(Ruta.Probadores.ruta) {
-                            popUpTo(Ruta.Inicio.ruta)
-                            launchSingleTop = true
-                        }
-                    }
-                )
             }
 
             // ------------------------- PANEL (barra inferior) ------------------------
@@ -225,6 +233,9 @@ fun AppNavegacion() {
                         navController.navigateUp()
                     }
                 )
+            }
+            composable(Ruta.GestionProbadores.ruta) {
+                GestionProbadoresScreen(seccionViewModel, onVolver = { navController.navigateUp() })
             }
             composable(Ruta.Parametros.ruta) {
                 ParametrosScreen(

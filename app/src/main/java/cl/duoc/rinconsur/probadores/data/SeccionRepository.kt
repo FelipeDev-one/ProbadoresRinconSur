@@ -39,12 +39,6 @@ class SeccionRepository(private val db: ProbadoresDatabase) {
     fun obtenerSeccion(): Flow<Seccion?> =
         db.invalidationTracker.createFlow(*ProbadoresDatabase.TABLAS).map { db.withTransaction { leer() } }
 
-    suspend fun inicializarSiFalta(crear: () -> Seccion) {
-        db.withTransaction {
-            if (leer() == null) guardarCambios(Seccion(), crear())
-        }
-    }
-
     suspend fun <T> actualizar(operacion: (Seccion) -> Pair<Seccion, T>): T =
         db.withTransaction {
             val actual = leer() ?: Seccion()

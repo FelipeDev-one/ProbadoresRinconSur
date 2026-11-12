@@ -66,6 +66,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.material.icons.filled.Checkroom
+import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.foundation.layout.Spacer
+import cl.duoc.rinconsur.probadores.ui.components.BotonPrincipal
+import cl.duoc.rinconsur.probadores.ui.components.CampoContrasena
+import cl.duoc.rinconsur.probadores.ui.components.CamposNuevaContrasena
+import cl.duoc.rinconsur.probadores.ui.components.PanelCodigoRecuperacion
 import cl.duoc.rinconsur.probadores.R
 import cl.duoc.rinconsur.probadores.model.Colaborador
 import cl.duoc.rinconsur.probadores.model.LoginUiState
@@ -89,7 +99,7 @@ import cl.duoc.rinconsur.probadores.viewmodel.LoginViewModel
 
 @Composable
 fun LoginScreen(
-    onVolver: () -> Unit,
+    onCliente: () -> Unit,
     onIngreso: () -> Unit,
     viewModel: LoginViewModel = viewModel()
 ) {
@@ -99,7 +109,7 @@ fun LoginScreen(
     // Atrás retrocede un paso; en el código nuevo no se puede salir sin confirmarlo.
     val volverPaso: () -> Unit = {
         when (estado.paso) {
-            PasoLogin.RUT -> onVolver()
+            PasoLogin.RUT -> Unit
             PasoLogin.RECUPERAR -> viewModel.volverAContrasena()
             PasoLogin.CODIGO_NUEVO -> Unit
             else -> viewModel.volverAlRut()
@@ -108,7 +118,13 @@ fun LoginScreen(
     BackHandler(enabled = estado.paso != PasoLogin.RUT, onBack = volverPaso)
 
     Scaffold(
-        topBar = { BarraConVolver(stringResource(R.string.titulo_login), volverPaso) }
+        // Es la primera pantalla de la app: en el paso del RUT no hay a dónde volver.
+        topBar = {
+            BarraConVolver(
+                stringResource(R.string.titulo_login),
+                onVolver = volverPaso.takeIf { estado.paso != PasoLogin.RUT && estado.paso != PasoLogin.CODIGO_NUEVO }
+            )
+        }
     ) { padding ->
         Box(
             Modifier
@@ -130,7 +146,7 @@ fun LoginScreen(
                     verticalArrangement = Arrangement.spacedBy(Dimens.espacioMedio)
                 ) {
                     when (paso) {
-                        PasoLogin.RUT -> PasoRut(estado, recientes, viewModel, onIngreso)
+                        PasoLogin.RUT -> PasoRut(estado, recientes, viewModel, onIngreso, onCliente)
                         PasoLogin.CONTRASENA -> PasoContrasena(estado, viewModel, onIngreso)
                         PasoLogin.CREAR_CONTRASENA -> PasoCrear(estado, viewModel)
                         PasoLogin.RECUPERAR -> PasoRecuperar(estado, viewModel)
@@ -150,10 +166,18 @@ private fun PasoRut(
     estado: LoginUiState,
     recientes: List<Colaborador>,
     viewModel: LoginViewModel,
-    onIngreso: () -> Unit
+    onIngreso: () -> Unit,
+    onCliente: () -> Unit
 ) {
-    Icon(Icons.Filled.Badge, contentDescription = null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary)
-    Text("Hola, bienvenido(a)", style = MaterialTheme.typography.headlineSmall)
+    Icon(Icons.Filled.Checkroom, contentDescription = null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary)
+    Text(stringResource(R.string.marca), style = MaterialTheme.typography.headlineMedium)
+    Text(
+        stringResource(R.string.sucursal),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        textAlign = TextAlign.Center
+    )
+    Text("Ingreso de colaboradores", style = MaterialTheme.typography.titleLarge)
     Text(
         if (recientes.isEmpty()) "Ingrese su RUT para registrar acciones en la sección"
         else "Toque su nombre o ingrese su RUT",
@@ -218,6 +242,21 @@ private fun PasoRut(
     TextButton(onClick = viewModel::olvideContrasena, enabled = !estado.cargando) {
         Text("¿Olvidó su contraseña?")
     }
+
+    // El cliente no se identifica ni entrega datos personales (RNF-06).
+    HorizontalDivider()
+    Text("¿Es cliente?", style = MaterialTheme.typography.titleMedium)
+    OutlinedButton(
+        onClick = onCliente,
+        enabled = !estado.cargando,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(Dimens.alturaBoton)
+    ) {
+        Icon(Icons.Filled.Timer, contentDescription = null)
+        Spacer(Modifier.width(ButtonDefaults.IconSpacing))
+        Text("Ver tiempo de espera", style = MaterialTheme.typography.titleMedium)
+    }
 }
 
 // ------------------------------- CONTRASEÑA -------------------------------
@@ -247,7 +286,7 @@ private fun PasoCrear(estado: LoginUiState, viewModel: LoginViewModel) {
         "Primera vez en este equipo",
         "Cree una contraseña para proteger las acciones de jefatura. La pediremos cada vez que ingrese."
     )
-    CamposNuevaContrasena(estado, viewModel, etiqueta = "Nueva contraseña") { viewModel.crearContrasena() }
+    NuevaContrasena(estado, viewModel) { viewModel.crearContrasena() }
     BotonPrincipal("Crear contraseña", estado.cargando) { viewModel.crearContrasena() }
 }
 
@@ -273,7 +312,7 @@ private fun PasoRecuperar(estado: LoginUiState, viewModel: LoginViewModel) {
             imeAction = ImeAction.Next
         )
     )
-    CamposNuevaContrasena(estado, viewModel, etiqueta = "Nueva contraseña") { viewModel.recuperar() }
+    NuevaContrasena(estado, viewModel) { viewModel.recuperar() }
     BotonPrincipal("Guardar contraseña", estado.cargando) { viewModel.recuperar() }
     Text(
         "¿No tiene el código? Pida a otra jefatura que restablezca su contraseña en Ajustes → Colaboradores.",
@@ -285,49 +324,12 @@ private fun PasoRecuperar(estado: LoginUiState, viewModel: LoginViewModel) {
 
 @Composable
 private fun PasoCodigoNuevo(estado: LoginUiState, viewModel: LoginViewModel, onIngreso: () -> Unit) {
-    var anotado by rememberSaveable { mutableStateOf(false) }
-
-    Icon(Icons.Filled.Key, contentDescription = null, modifier = Modifier.size(56.dp), tint = MaterialTheme.colorScheme.primary)
-    Text("Guarde su código de recuperación", style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
-    Text(
-        "Si olvida su contraseña, lo necesitará para crear una nueva. Anótelo en un lugar seguro: no se volverá a mostrar.",
-        style = MaterialTheme.typography.bodyLarge,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        textAlign = TextAlign.Center
+    PanelCodigoRecuperacion(
+        codigo = estado.codigoGenerado ?: "",
+        textoBoton = "Ingresar al panel",
+        cargando = estado.cargando,
+        onConfirmar = { viewModel.confirmarCodigoGuardado(onIngreso) }
     )
-    Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Text(
-            estado.codigoGenerado ?: "",
-            style = MaterialTheme.typography.headlineMedium.copy(fontFamily = FontFamily.Monospace, letterSpacing = 4.sp),
-            color = MaterialTheme.colorScheme.onPrimaryContainer,
-            textAlign = TextAlign.Center,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = Dimens.espacioGrande)
-        )
-    }
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(MaterialTheme.shapes.small)
-            .clickable { anotado = !anotado }
-    ) {
-        Checkbox(checked = anotado, onCheckedChange = { anotado = it })
-        Text("Ya anoté el código", style = MaterialTheme.typography.bodyLarge)
-    }
-    Button(
-        onClick = { viewModel.confirmarCodigoGuardado(onIngreso) },
-        enabled = anotado,
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(Dimens.alturaBoton)
-    ) {
-        Text("Ingresar al panel", style = MaterialTheme.typography.titleMedium)
-    }
 }
 
 // ------------------------------- COMPONENTES -------------------------------
@@ -387,79 +389,14 @@ private fun Aviso(icono: androidx.compose.ui.graphics.vector.ImageVector, titulo
 }
 
 @Composable
-private fun CampoContrasena(
-    valor: String,
-    onCambio: (String) -> Unit,
-    etiqueta: String,
-    error: String?,
-    ayuda: String? = null,
-    imeAction: ImeAction,
-    onDone: () -> Unit = {}
-) {
-    var visible by rememberSaveable { mutableStateOf(false) }
-    CampoTexto(
-        valor = valor,
-        onCambio = onCambio,
-        etiqueta = etiqueta,
-        icono = Icons.Filled.Password,
-        error = error,
-        ayuda = ayuda,
-        transformacionVisual = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
-        accionFinal = {
-            IconButton(onClick = { visible = !visible }) {
-                Icon(
-                    if (visible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                    contentDescription = if (visible) "Ocultar contraseña" else "Mostrar contraseña"
-                )
-            }
-        },
-        opcionesTeclado = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = imeAction),
-        accionesTeclado = KeyboardActions(onDone = { onDone() })
-    )
-}
-
-@Composable
-private fun CamposNuevaContrasena(
-    estado: LoginUiState,
-    viewModel: LoginViewModel,
-    etiqueta: String,
-    onDone: () -> Unit
-) {
-    CampoContrasena(
-        valor = estado.contrasena,
-        onCambio = viewModel::onContrasenaChange,
-        etiqueta = etiqueta,
-        error = estado.errores.contrasena,
-        ayuda = "Mínimo ${Contrasenas.LARGO_MINIMO} caracteres, con letras y números",
-        imeAction = ImeAction.Next
-    )
-    CampoContrasena(
-        valor = estado.confirmacion,
-        onCambio = viewModel::onConfirmacionChange,
-        etiqueta = "Repita la contraseña",
-        error = estado.errores.confirmacion,
-        imeAction = ImeAction.Done,
+private fun NuevaContrasena(estado: LoginUiState, viewModel: LoginViewModel, onDone: () -> Unit) {
+    CamposNuevaContrasena(
+        contrasena = estado.contrasena,
+        confirmacion = estado.confirmacion,
+        errorContrasena = estado.errores.contrasena,
+        errorConfirmacion = estado.errores.confirmacion,
+        onContrasena = viewModel::onContrasenaChange,
+        onConfirmacion = viewModel::onConfirmacionChange,
         onDone = onDone
     )
-}
-
-@Composable
-private fun BotonPrincipal(texto: String, cargando: Boolean, onClick: () -> Unit) {
-    Button(
-        onClick = onClick,
-        enabled = !cargando,
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(Dimens.alturaBoton)
-    ) {
-        if (cargando) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(24.dp),
-                strokeWidth = 3.dp,
-                color = MaterialTheme.colorScheme.onPrimary
-            )
-        } else {
-            Text(texto, style = MaterialTheme.typography.titleMedium)
-        }
-    }
 }

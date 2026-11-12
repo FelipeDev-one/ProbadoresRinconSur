@@ -18,9 +18,9 @@ sealed class Ruta(
     val soloJefatura: Boolean = false
 ) {
     // Sin sesión: el cliente no se identifica (Aclaración nº 6)
-    data object Inicio : Ruta("inicio", requiereSesion = false)
-    data object Cliente : Ruta("cliente", requiereSesion = false)
+    // Login es la primera pantalla de la app cuando no hay sesión abierta.
     data object Login : Ruta("login", requiereSesion = false)
+    data object Cliente : Ruta("cliente", requiereSesion = false)
 
     // Panel de colaboradores (barra inferior)
     data object Probadores : Ruta("probadores")
@@ -50,11 +50,13 @@ sealed class Ruta(
 
     data object Parametros : Ruta("parametros", soloJefatura = true)
 
+    data object GestionProbadores : Ruta("gestion_probadores", soloJefatura = true)
+
     companion object {
         val todas: List<Ruta> by lazy {
             listOf(
-                Inicio, Cliente, Login, Probadores, Fila, Resumen, Ajustes, NuevoTurno,
-                TurnoConfirmado, FueraServicio, Colaboradores, ColaboradorForm, Parametros
+                Login, Cliente, Probadores, Fila, Resumen, Ajustes, NuevoTurno,
+                TurnoConfirmado, FueraServicio, Colaboradores, ColaboradorForm, Parametros, GestionProbadores
             )
         }
 
