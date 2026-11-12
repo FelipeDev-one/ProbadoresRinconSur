@@ -12,6 +12,7 @@ import cl.duoc.rinconsur.probadores.model.ReglaNegocioException
 import cl.duoc.rinconsur.probadores.model.ReglasSeccion
 import cl.duoc.rinconsur.probadores.model.TurnoLaboral
 import cl.duoc.rinconsur.probadores.utils.RutValidator
+import cl.duoc.rinconsur.probadores.utils.Validaciones
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
@@ -73,20 +74,9 @@ class ColaboradorViewModel(application: Application) : AndroidViewModel(applicat
 
     fun validarFormulario(): Boolean {
         val e = _estado.value
-        val nombre = e.nombre.trim()
-        val soloLetras = nombre.all { it.isLetter() || it == ' ' || it == '\'' || it == '-' }
         val errores = ColaboradorErrores(
-            rut = when {
-                e.rut.isBlank() -> "Campo obligatorio"
-                !RutValidator.esValido(e.rut) -> "RUT inválido: revise el dígito verificador"
-                else -> null
-            },
-            nombre = when {
-                nombre.isBlank() -> "Campo obligatorio"
-                !soloLetras -> "Use solo letras"
-                nombre.split(" ").count { it.isNotBlank() } < 2 -> "Ingrese al menos nombre y apellido"
-                else -> null
-            },
+            rut = Validaciones.rut(e.rut),
+            nombre = Validaciones.nombrePersona(e.nombre),
             perfil = if (e.perfil == null) "Seleccione un perfil" else null,
             turno = if (e.turno == null) "Seleccione el turno habitual" else null
         )
@@ -104,7 +94,7 @@ class ColaboradorViewModel(application: Application) : AndroidViewModel(applicat
                 val rutJefatura = preferencias.obtenerSesion().first() ?: throw ReglaNegocioException("Su sesión terminó")
                 val colaborador = Colaborador(
                     rut = RutValidator.normalizar(e.rut),
-                    nombre = e.nombre.trim().split(" ").filter { it.isNotBlank() }.joinToString(" "),
+                    nombre = Validaciones.limpiarNombre(e.nombre),
                     perfil = perfil,
                     turno = turno,
                     activo = e.activo

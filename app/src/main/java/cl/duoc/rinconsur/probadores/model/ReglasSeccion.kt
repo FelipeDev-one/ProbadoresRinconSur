@@ -306,11 +306,91 @@ object ReglasSeccion {
         }
         val lista = if (esNuevo) s.colaboradores + colaborador
         else s.colaboradores.map { if (it.rut == colaborador.rut) colaborador else it }
+        if (lista.none { it.perfil.esJefatura && it.activo }) {
+            throw ReglaNegocioException("Debe quedar al menos una jefatura activa.")
+        }
         return s.copy(colaboradores = lista)
     }
 
     fun guardarParametros(s: Seccion, parametros: Parametros, rut: String): Seccion {
         requerirJefatura(colaboradorActivo(s, rut))
         return s.copy(parametros = parametros)
+    }
+
+    // ------------------------- CONFIGURACIÓN INICIAL -------------------------
+    // La app parte vacía: la primera persona que la abre crea la jefatura y los
+    // probadores de la sección. Después, todo se administra desde la app.
+
+    const val MAX_PROBADORES = 30
+
+    fun estaConfigurada(s: Seccion?): Boolean =
+        s != null && s.probadores.isNotEmpty() && s.colaboradores.any { it.perfil.esJefatura && it.activo }
+
+    fun codigoProbador(numero: Int): String = "P-%02d".format(numero)
+
+    fun configurarInicial(
+        s: Seccion,
+        jefatura: Colaborador,
+        estandar: Int,
+        accesibles: Int,
+        ahora: Long
+    ): Seccion {
+        if (estaConfigurada(s)) throw ReglaNegocioException("La sección ya está configurada.")
+        if (!jefatura.perfil.esJefatura) throw ReglaNegocioException("La primera cuenta debe ser de jefatura.")
+        if (estandar < 0 || accesibles < 0 || estandar + accesibles < 1) {
+            throw ReglaNegocioException("Registre al menos un probador.")
+        }
+        if (estandar + accesibles > MAX_PROBADORES) {
+            throw ReglaNegocioException("El máximo es $MAX_PROBADORES probadores.")
+        }
+        // Los accesibles quedan al final de la numeración (P-01… estándar, últimos accesibles).
+        val probadores = (1..estandar + accesibles).map { n ->
+            Probador(
+                codigo = codigoProbador(n),
+                tipo = if (n > estandar) TipoProbador.ACCESIBLE else TipoProbador.ESTANDAR,
+                estado = EstadoProbador.LIBRE,
+                desde = ahora
+            )
+        }
+        return Seccion(probadores = probadores, colaboradores = listOf(jefatura.copy(activo = true)))
+    }
+
+    // ------------------------ MANTENEDOR DE PROBADORES ------------------------
+
+    fun agregarProbador(s: Seccion, tipo: TipoProbador, rut: String, ahora: Long): Pair<Seccion, Probador> {
+        requerirJefatura(colaboradorActivo(s, rut))
+        if (s.probadores.size >= MAX_PROBADORES) {
+            throw ReglaNegocioException("El máximo es $MAX_PROBADORES probadores.")
+        }
+        val usados = s.probadores.mapNotNull { it.codigo.removePrefix("P-").toIntOrNull() }.toSet()
+        val numero = (1..MAX_PROBADORES).first { it !in usados }
+        val nuevo = Probador(codigoProbador(numero), tipo, EstadoProbador.LIBRE, ahora)
+        return s.copy(probadores = (s.probadores + nuevo).sortedBy { it.codigo }) to nuevo
+    }
+
+    fun cambiarTipoProbador(s: Seccion, codigo: String, tipo: TipoProbador, rut: String): Seccion {
+        requerirJefatura(colaboradorActivo(s, rut))
+        val p = probador(s, codigo)
+        if (p.estado == EstadoProbador.OCUPADO) {
+            throw ReglaNegocioException("$codigo está ocupado: espere a que termine el uso.")
+        }
+        return s.copy(probadores = s.probadores.map { if (it.codigo == codigo) it.copy(tipo = tipo) else it })
+    }
+
+    // Solo se elimina un probador que nunca se usó: si tiene historial, se marca fuera de servicio.
+    fun eliminarProbador(s: Seccion, codigo: String, rut: String): Seccion {
+        requerirJefatura(colaboradorActivo(s, rut))
+        val p = probador(s, codigo)
+        if (s.probadores.size <= 1) throw ReglaNegocioException("La sección debe tener al menos un probador.")
+        if (p.estado == EstadoProbador.OCUPADO || p.estado == EstadoProbador.EN_ORDENAMIENTO) {
+            throw ReglaNegocioException("$codigo está en uso: no se puede eliminar ahora.")
+        }
+        if (s.usos.any { it.codigoProbador == codigo }) {
+            throw ReglaNegocioException("$codigo tiene usos registrados: márquelo fuera de servicio en vez de eliminarlo.")
+        }
+        return s.copy(
+            probadores = s.probadores.filter { it.codigo != codigo },
+            cambios = s.cambios.filter { it.codigoProbador != codigo }
+        )
     }
 }
