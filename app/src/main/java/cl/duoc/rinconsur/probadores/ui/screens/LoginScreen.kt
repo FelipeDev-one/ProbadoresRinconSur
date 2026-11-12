@@ -215,6 +215,9 @@ private fun PasoRut(
         accionesTeclado = KeyboardActions(onDone = { viewModel.continuar(onIngreso) })
     )
     BotonPrincipal("Continuar", estado.cargando) { viewModel.continuar(onIngreso) }
+    TextButton(onClick = viewModel::olvideContrasena, enabled = !estado.cargando) {
+        Text("¿Olvidó su contraseña?")
+    }
 }
 
 // ------------------------------- CONTRASEÑA -------------------------------

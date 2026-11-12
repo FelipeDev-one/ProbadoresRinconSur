@@ -90,10 +90,16 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
 
     // -------------------------------- PASO 1 --------------------------------
 
-    fun continuar(onExito: () -> Unit) {
+    fun continuar(onExito: () -> Unit) = identificar(recuperar = false, onExito)
+
+    // "¿Olvidó su contraseña?" desde la primera pantalla: pide el RUT y salta directo a recuperar.
+    fun olvideContrasena() = identificar(recuperar = true, onExito = {})
+
+    private fun identificar(recuperar: Boolean, onExito: () -> Unit) {
         val actual = _estado.value
         if (actual.cargando) return
         val errorFormato = when {
+            actual.rut.isBlank() && recuperar -> "Ingrese su RUT para recuperar su contraseña"
             actual.rut.isBlank() -> "Campo obligatorio"
             !RutValidator.esValido(actual.rut) -> "RUT inválido: revise el dígito verificador"
             else -> null
@@ -114,6 +120,12 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
             when {
                 error != null || colaborador == null ->
                     _estado.update { it.copy(cargando = false, errores = LoginErrores(rut = error)) }
+                !colaborador.perfil.esJefatura && recuperar -> _estado.update {
+                    it.copy(
+                        cargando = false,
+                        errores = LoginErrores(rut = "Esta cuenta ingresa solo con su RUT: no tiene contraseña")
+                    )
+                }
                 !colaborador.perfil.esJefatura -> finalizar(rut, onExito)
                 else -> {
                     val tieneContrasena = repositorio.obtenerCredencial(rut) != null
@@ -121,7 +133,11 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                         it.copy(
                             cargando = false,
                             nombre = colaborador.nombre,
-                            paso = if (tieneContrasena) PasoLogin.CONTRASENA else PasoLogin.CREAR_CONTRASENA,
+                            paso = when {
+                                !tieneContrasena -> PasoLogin.CREAR_CONTRASENA
+                                recuperar -> PasoLogin.RECUPERAR
+                                else -> PasoLogin.CONTRASENA
+                            },
                             errores = LoginErrores()
                         )
                     }

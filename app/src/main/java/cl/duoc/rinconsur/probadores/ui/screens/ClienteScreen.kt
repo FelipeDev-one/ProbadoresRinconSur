@@ -26,6 +26,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -48,6 +50,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -64,6 +67,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.delay
 import cl.duoc.rinconsur.probadores.R
 import cl.duoc.rinconsur.probadores.ui.components.BarraConVolver
 import cl.duoc.rinconsur.probadores.ui.components.CampoTexto
@@ -204,20 +208,37 @@ private fun Indicador(icono: ImageVector, titulo: String, valor: String, modifie
 @Composable
 private fun ConsultaMiTurno(viewModel: SeccionViewModel) {
     var numero by rememberSaveable { mutableStateOf("") }
-    var resultado by remember { mutableStateOf<ConsultaTurno?>(null) }
+    // Número ya consultado: mientras exista, el resultado se recalcula solo cada vez
+    // que cambia la sección (avanza la fila, llaman el turno), sin volver a tocar el botón.
+    var consultado by rememberSaveable { mutableStateOf<String?>(null) }
+    val seccion by viewModel.seccion.collectAsStateWithLifecycle()
+    val resultado = remember(consultado, seccion) { consultado?.let { viewModel.consultarTurno(it) } }
     val foco = LocalFocusManager.current
     val consultar = {
-        resultado = viewModel.consultarTurno(numero)
+        consultado = numero
         foco.clearFocus()
     }
 
-    Card(Modifier.fillMaxWidth()) {
+    // El resultado aparece bajo el botón: se desplaza la pantalla para que quede a la vista.
+    val traerALaVista = remember { BringIntoViewRequester() }
+    LaunchedEffect(consultado) {
+        if (consultado != null) {
+            delay(350)
+            traerALaVista.bringIntoView()
+        }
+    }
+
+    Card(
+        Modifier
+            .fillMaxWidth()
+            .bringIntoViewRequester(traerALaVista)
+    ) {
         Column(Modifier.padding(Dimens.espacioPantalla), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("¿Ya tiene número de turno?", style = MaterialTheme.typography.titleLarge)
             val error = (resultado as? ConsultaTurno.Invalido)?.error
             CampoTexto(
                 valor = numero,
-                onCambio = { numero = it.filter(Char::isDigit).take(3); resultado = null },
+                onCambio = { numero = it.filter(Char::isDigit).take(3); consultado = null },
                 etiqueta = "Número de turno",
                 icono = Icons.Filled.ConfirmationNumber,
                 error = error,
