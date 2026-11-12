@@ -19,7 +19,7 @@ Evaluación Parcial 2 · DSY1105 Desarrollo de Aplicaciones Móviles · Sección
 
 **Asistente de probadores y vendedor(a)**
 - Ingreso con RUT validado (dígito verificador, colaborador registrado y activo).
-- Estado en tiempo real de los 8 probadores (libre, ocupado, en ordenamiento, fuera de servicio).
+- Estado en tiempo real de los probadores de la sección (libre, ocupado, en ordenamiento, fuera de servicio).
 - Registro de turnos en la fila (1 a 6 prendas, atención preferente con motivo).
 - Llamado de turnos, asignación de probador sugerido, registro de no presentación y abandono con motivo.
 - Uso de probador sin fila, incluso registrado con atraso de hasta 15 minutos.
@@ -30,7 +30,8 @@ Evaluación Parcial 2 · DSY1105 Desarrollo de Aplicaciones Móviles · Sección
 - Todo lo anterior.
 - Marcar probadores fuera de servicio con motivo y foto de evidencia (cámara o galería), y volver a habilitarlos.
 - Resumen por día y franja horaria: ingresos, abandonos, espera y uso promedio, conversión y venta potencial perdida.
-- Mantenedor de colaboradores y ajuste de parámetros de la sección.
+- Mantenedor de colaboradores, mantenedor de probadores (agregar, cambiar el tipo, eliminar) y ajuste de parámetros de la sección.
+- Configuración inicial de la sección la primera vez que se abre la app.
 - Cierre de jornada.
 
 ## Tecnologías
@@ -47,14 +48,14 @@ Evaluación Parcial 2 · DSY1105 Desarrollo de Aplicaciones Móviles · Sección
 
 1. Clonar el repositorio y abrir la carpeta del proyecto en Android Studio.
 2. Sincronizar Gradle y ejecutar el módulo `app` en un emulador o teléfono (Android 8.0 o superior).
-3. Ingresar con un RUT de prueba:
+3. La app parte **sin datos**. La primera vez abre el asistente de configuración inicial:
+   1. Crear la cuenta de jefatura (RUT, nombre, turno y contraseña).
+   2. Indicar cuántos probadores estándar y accesibles tiene la sección.
+   3. Anotar el código de recuperación que se muestra una sola vez.
+4. Desde Ajustes, la jefatura agrega al resto del equipo (Colaboradores) y administra los probadores.
 
-| RUT | Perfil |
-|---|---|
-| 12.984.561-9 | Jefatura |
-| 16.842.311-K | Asistente de probadores |
-| 17.550.982-8 | Vendedor(a) |
-| 18.447.093-4 | Inactivo |
+Al abrir la app se muestra directamente el ingreso: los colaboradores entran con su RUT y los clientes
+con "Ver tiempo de espera", sin identificarse. Si ya hay una sesión abierta, la app entra directo al panel.
 
 Fuera del horario de la tienda (10:00 a 21:00) se puede activar el modo demostración en Ajustes.
 
@@ -92,7 +93,7 @@ Tomadas en un dispositivo físico.
 
 ```
 model/        entidades y reglas de negocio
-data/         repositorio, preferencias y datos de ejemplo
+data/         repositorio y preferencias
 data/local/   base de datos Room: entidades, relaciones y DAOs
 viewmodel/    estado y validaciones de cada pantalla
 navigation/   rutas y navegación
