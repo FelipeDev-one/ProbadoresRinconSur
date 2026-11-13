@@ -124,7 +124,8 @@ class ConfiguracionViewModel(application: Application) : AndroidViewModel(applic
         val e = _estado.value
         if (e.guardando) return
         val estandar = e.estandar.toIntOrNull()
-        val accesibles = e.accesibles.toIntOrNull()
+        // Los accesibles son opcionales: si se deja vacío, se entiende que no hay (0).
+        val accesibles = if (e.accesibles.isBlank()) 0 else e.accesibles.toIntOrNull()
         val errores = ConfiguracionErrores(
             estandar = when {
                 e.estandar.isBlank() -> "Campo obligatorio (puede ser 0)"
@@ -132,7 +133,6 @@ class ConfiguracionViewModel(application: Application) : AndroidViewModel(applic
                 else -> null
             },
             accesibles = when {
-                e.accesibles.isBlank() -> "Campo obligatorio (puede ser 0)"
                 accesibles == null || accesibles > ReglasSeccion.MAX_PROBADORES -> "Entre 0 y ${ReglasSeccion.MAX_PROBADORES}"
                 else -> null
             },
@@ -177,7 +177,7 @@ class ConfiguracionViewModel(application: Application) : AndroidViewModel(applic
                 preferencias.guardarSesion(jefatura.rut)
                 repositorio.actualizar { s ->
                     ReglasSeccion.configurarInicial(
-                        s, jefatura, e.estandar.toInt(), e.accesibles.toInt(), System.currentTimeMillis()
+                        s, jefatura, e.estandar.toInt(), e.accesibles.toIntOrNull() ?: 0, System.currentTimeMillis()
                     ) to Unit
                 }
                 repositorio.guardarCredencial(credencial)

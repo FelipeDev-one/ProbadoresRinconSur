@@ -228,11 +228,11 @@ private fun PasoProbadores(estado: ConfiguracionUiState, viewModel: Configuracio
     CampoTexto(
         valor = estado.accesibles,
         onCambio = viewModel::onAccesiblesChange,
-        etiqueta = "Probadores accesibles",
+        etiqueta = "Probadores accesibles (opcional)",
         icono = Icons.Filled.Accessible,
         error = estado.errores.accesibles,
         ayuda = "Más amplios; tienen prioridad para la atención preferente",
-        placeholder = "Ej: 1",
+        placeholder = "Opcional: vacío = ninguno",
         opcionesTeclado = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
         accionesTeclado = KeyboardActions(onDone = { viewModel.continuarACodigo() })
     )

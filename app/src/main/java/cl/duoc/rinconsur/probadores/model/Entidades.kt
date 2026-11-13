@@ -19,29 +19,20 @@ data class Colaborador(
     val turno: TurnoLaboral,
     val activo: Boolean = true
 ) {
-    val nombreCorto: String
-        get() {
-            val partes = nombre.trim().split(" ").filter { it.isNotBlank() }
-            return when {
-                partes.size >= 3 -> "${partes[0].first()}. ${partes[partes.size - 2]}"
-                partes.size == 2 -> "${partes[0].first()}. ${partes[1]}"
-                else -> nombre
-            }
-        }
+    val nombreCorto: String get() = Nombres.corto(nombre)
+    val primerNombre: String get() = Nombres.primero(nombre)
+    val iniciales: String get() = Nombres.iniciales(nombre)
+}
 
-    val primerNombre: String get() = nombre.trim().split(" ").firstOrNull { it.isNotBlank() } ?: nombre
-
-    // "Patricia Elena Morales Castillo" → "PM" (nombre + apellido paterno).
-    val iniciales: String
-        get() {
-            val partes = nombre.trim().split(" ").filter { it.isNotBlank() }
-            val apellido = when {
-                partes.size >= 3 -> partes[partes.size - 2]
-                partes.size == 2 -> partes[1]
-                else -> null
-            }
-            return listOfNotNull(partes.firstOrNull(), apellido).joinToString("") { it.first().uppercase() }
-        }
+// Cuenta de cliente: la crea el propio cliente. Solo RUT y nombre (su clave va aparte, como hash).
+data class Cliente(
+    val rut: String,
+    val nombre: String,
+    val creado: Long
+) {
+    val nombreCorto: String get() = Nombres.corto(nombre)
+    val primerNombre: String get() = Nombres.primero(nombre)
+    val iniciales: String get() = Nombres.iniciales(nombre)
 }
 
 data class Turno(
@@ -55,7 +46,10 @@ data class Turno(
     val horaLlamado: Long? = null,
     val horaCierre: Long? = null,
     val motivoAbandono: MotivoAbandono? = null,
-    val registradoPor: String
+    // Colaborador que registró el turno en el mesón; null si lo tomó el propio cliente.
+    val registradoPor: String?,
+    // Cliente dueño del turno, si lo tomó desde su cuenta.
+    val clienteRut: String? = null
 ) {
     val codigo: String get() = "T-%03d".format(numero)
 }
@@ -103,6 +97,7 @@ data class Parametros(
 data class Seccion(
     val probadores: List<Probador> = emptyList(),
     val colaboradores: List<Colaborador> = emptyList(),
+    val clientes: List<Cliente> = emptyList(),
     val turnos: List<Turno> = emptyList(),
     val usos: List<Uso> = emptyList(),
     val cambios: List<CambioEstado> = emptyList(),

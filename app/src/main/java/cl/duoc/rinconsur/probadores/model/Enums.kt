@@ -35,6 +35,9 @@ enum class Perfil(val etiqueta: String) {
     JEFATURA("Jefatura");
 
     val esJefatura: Boolean get() = this == JEFATURA
+
+    // Vendedores(as) atienden la fila; los probadores los operan asistentes y jefatura.
+    val operaProbadores: Boolean get() = this != VENDEDOR
 }
 
 enum class TurnoLaboral(val etiqueta: String) {
