@@ -69,6 +69,9 @@ import cl.duoc.rinconsur.probadores.viewmodel.TurnoVista
 fun FilaScreen(navController: NavController, viewModel: SeccionViewModel) {
     val panel by viewModel.panel.collectAsState()
     val modoDemo by viewModel.modoDemo.collectAsState()
+    val sesion by viewModel.sesion.collectAsState()
+    // Llamar y asignar es tarea de asistentes y jefatura; el vendedor registra turnos y retiros.
+    val opera = sesion?.perfil?.operaProbadores == true
     var asignarId by rememberSaveable { mutableStateOf<String?>(null) }
     var abandonoId by rememberSaveable { mutableStateOf<String?>(null) }
 
@@ -118,6 +121,7 @@ fun FilaScreen(navController: NavController, viewModel: SeccionViewModel) {
                 TurnoCard(
                     vista = vista,
                     minutosPresentarse = p.parametros.minutosPresentarse,
+                    opera = opera,
                     onLlamar = { viewModel.llamar(vista.turno) },
                     onAsignar = { asignarId = vista.turno.id },
                     onAbandono = { abandonoId = vista.turno.id },
@@ -162,6 +166,7 @@ private fun FilaVacia() {
 private fun TurnoCard(
     vista: TurnoVista,
     minutosPresentarse: Int,
+    opera: Boolean,
     onLlamar: () -> Unit,
     onAsignar: () -> Unit,
     onAbandono: () -> Unit,
@@ -196,10 +201,12 @@ private fun TurnoCard(
                 style = MaterialTheme.typography.bodyMedium
             )
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Button(onClick = onAsignar) {
+                if (opera) Button(onClick = onAsignar) {
                     Icon(Icons.Filled.Checkroom, null, Modifier.size(18.dp)); Text("  Asignar")
                 }
-                if (!llamado) {
+                if (!opera) {
+                    // Solo consulta para vendedores(as).
+                } else if (!llamado) {
                     FilledTonalButton(onClick = onLlamar) {
                         Icon(Icons.Filled.Campaign, null, Modifier.size(18.dp)); Text("  Llamar")
                     }

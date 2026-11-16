@@ -69,6 +69,10 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.delay
 import cl.duoc.rinconsur.probadores.R
+import cl.duoc.rinconsur.probadores.ui.components.CampoContrasena
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.AlertDialog
+import androidx.activity.compose.BackHandler
 import cl.duoc.rinconsur.probadores.ui.components.BarraConVolver
 import cl.duoc.rinconsur.probadores.ui.components.CampoTexto
 import cl.duoc.rinconsur.probadores.ui.theme.CifraCliente
@@ -88,8 +92,16 @@ import cl.duoc.rinconsur.probadores.viewmodel.SeccionViewModel
 fun ClienteScreen(viewModel: SeccionViewModel, onVolver: () -> Unit) {
     val panel by viewModel.panel.collectAsStateWithLifecycle()
 
+    // Modo punto de espera: el equipo queda a la vista de los clientes, así que
+    // para volver al panel se pide la contraseña del colaborador que lo abrió.
+    var pidiendoClave by rememberSaveable { mutableStateOf(false) }
+    BackHandler { pidiendoClave = true }
+    if (pidiendoClave) {
+        SalirPuntoEspera(viewModel, onSalir = { pidiendoClave = false; onVolver() }, onCancelar = { pidiendoClave = false })
+    }
+
     Scaffold(
-        topBar = { BarraConVolver(stringResource(R.string.titulo_cliente), onVolver) }
+        topBar = { BarraConVolver(stringResource(R.string.titulo_cliente), onVolver = { pidiendoClave = true }) }
     ) { padding ->
         val p = panel
         if (p == null) {
@@ -143,6 +155,42 @@ fun ClienteScreen(viewModel: SeccionViewModel, onVolver: () -> Unit) {
             ConsultaMiTurno(viewModel)
         }
     }
+}
+
+@Composable
+private fun SalirPuntoEspera(viewModel: SeccionViewModel, onSalir: () -> Unit, onCancelar: () -> Unit) {
+    var clave by rememberSaveable { mutableStateOf("") }
+    var error by rememberSaveable { mutableStateOf<String?>(null) }
+    var verificando by rememberSaveable { mutableStateOf(false) }
+    val verificar = {
+        if (clave.isBlank()) error = "Ingrese su contraseña"
+        else if (!verificando) {
+            verificando = true
+            viewModel.verificarClaveDeSesion(clave) { correcta ->
+                verificando = false
+                if (correcta) onSalir() else { clave = ""; error = "Contraseña incorrecta" }
+            }
+        }
+    }
+    AlertDialog(
+        onDismissRequest = onCancelar,
+        title = { Text("Salir del modo punto de espera") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(Dimens.espacioChico)) {
+                Text("Ingrese la contraseña del colaborador que abrió esta pantalla.")
+                CampoContrasena(
+                    valor = clave,
+                    onCambio = { clave = it.take(64); error = null },
+                    etiqueta = "Contraseña",
+                    error = error,
+                    imeAction = ImeAction.Done,
+                    onDone = verificar
+                )
+            }
+        },
+        confirmButton = { Button(onClick = verificar, enabled = !verificando) { Text("Salir") } },
+        dismissButton = { TextButton(onClick = onCancelar) { Text(stringResource(R.string.btn_cancelar)) } }
+    )
 }
 
 @Composable
@@ -282,7 +330,7 @@ private fun ConsultaMiTurno(viewModel: SeccionViewModel) {
 }
 
 @Composable
-private fun TurnoLlamado(codigo: String) {
+internal fun TurnoLlamado(codigo: String) {
     val latido = rememberInfiniteTransition(label = "latido")
     val escala by latido.animateFloat(1f, 1.06f, infiniteRepeatable(tween(600), RepeatMode.Reverse), label = "escala")
     Card(

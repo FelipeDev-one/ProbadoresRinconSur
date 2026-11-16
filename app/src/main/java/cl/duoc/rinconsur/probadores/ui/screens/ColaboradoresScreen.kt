@@ -40,7 +40,7 @@ import cl.duoc.rinconsur.probadores.utils.RutValidator
 import cl.duoc.rinconsur.probadores.viewmodel.SeccionViewModel
 
 // Mantenedor de colaboradores (RN-11, solo jefatura): activos primero, por nombre.
-// En las jefaturas se muestra si ya tienen contraseña y se puede restablecer la de otra.
+// Se muestra si cada colaborador ya creó su contraseña; la jefatura puede restablecer la de otro.
 @Composable
 fun ColaboradoresScreen(navController: NavController, viewModel: SeccionViewModel) {
     val seccion by viewModel.seccion.collectAsStateWithLifecycle()
@@ -80,9 +80,9 @@ fun ColaboradoresScreen(navController: NavController, viewModel: SeccionViewMode
                         supportingContent = {
                             Column {
                                 Text("${c.perfil.etiqueta} · ${c.turno.etiqueta} · ${RutValidator.formatear(c.rut)}")
-                                if (c.perfil.esJefatura) {
+                                run {
                                     Text(
-                                        if (tieneContrasena) "Contraseña configurada" else "Contraseña pendiente: la crea al ingresar",
+                                        if (tieneContrasena) "Contraseña configurada" else "Contraseña pendiente: la crea en su primer ingreso",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -96,7 +96,7 @@ fun ColaboradoresScreen(navController: NavController, viewModel: SeccionViewMode
                                     label = { Text(if (c.activo) "Activo" else "Inactivo") },
                                     icon = { Icon(Icons.Filled.Edit, contentDescription = null) }
                                 )
-                                if (c.perfil.esJefatura && tieneContrasena && c.rut != sesion?.rut) {
+                                if (tieneContrasena && c.rut != sesion?.rut) {
                                     SuggestionChip(
                                         onClick = { porRestablecer = c },
                                         label = { Text("Restablecer") },

@@ -86,6 +86,8 @@ fun ProbadoresScreen(navController: NavController, viewModel: SeccionViewModel) 
     val panel by viewModel.panel.collectAsStateWithLifecycle()
     val sesion by viewModel.sesion.collectAsStateWithLifecycle()
     var seleccionado by rememberSaveable { mutableStateOf<String?>(null) }
+    // Los probadores los operan asistentes y jefatura; el vendedor solo consulta su estado.
+    val opera = sesion?.perfil?.operaProbadores == true
 
     PanelScaffold(
         titulo = stringResource(R.string.titulo_probadores),
@@ -135,14 +137,18 @@ fun ProbadoresScreen(navController: NavController, viewModel: SeccionViewModel) 
             }
 
             items(p.probadores, key = { it.probador.codigo }) { vista ->
-                ProbadorCard(vista, onClick = { seleccionado = vista.probador.codigo })
+                ProbadorCard(vista, onClick = {
+                    if (opera) seleccionado = vista.probador.codigo
+                    else viewModel.mostrarMensaje("Solo consulta: los probadores los opera el asistente o la jefatura")
+                })
             }
 
             // Resumen de los probadores registrados en la sección (se administran en Ajustes).
             item(span = { GridItemSpan(maxLineSpan) }) {
                 val accesibles = p.probadores.filter { it.probador.tipo == TipoProbador.ACCESIBLE }
                 Text(
-                    "${p.probadores.size} probador(es) en la sección" +
+                    (if (opera) "" else "Vista de solo consulta. ") +
+                        "${p.probadores.size} probador(es) en la sección" +
                         if (accesibles.isEmpty()) "" else " · accesible(s): ${accesibles.joinToString { it.probador.codigo }}",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,

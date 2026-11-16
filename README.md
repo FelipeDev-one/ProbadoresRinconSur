@@ -13,26 +13,37 @@ Evaluación Parcial 2 · DSY1105 Desarrollo de Aplicaciones Móviles · Sección
 
 ## Funcionalidades implementadas
 
-**Cliente (sin registro ni datos personales)**
-- Pantalla de espera con probadores libres, personas en la fila y tiempo estimado de espera.
-- Consulta del propio turno por número: personas antes, espera estimada y aviso cuando es llamado.
+Todas las cuentas ingresan con **RUT y contraseña**. Nada se ve sin cuenta, y cada tipo de cuenta abre en su propia vista.
 
-**Asistente de probadores y vendedor(a)**
-- Ingreso con RUT validado (dígito verificador, colaborador registrado y activo).
+**Cliente (crea su propia cuenta con RUT, nombre y contraseña)**
+- Toma un turno desde su teléfono indicando las prendas y si necesita atención preferente.
+- Sigue su turno en vivo: personas antes, espera estimada y aviso cuando lo llaman.
+- Puede retirarse de la fila indicando el motivo.
+
+**Vendedor(a) (abre en Fila)**
+- Registra turnos en el mesón (1 a 6 prendas, atención preferente con motivo) y los retiros de la fila.
+- Consulta el estado de los probadores, sin operarlos.
+
+**Asistente de probadores (abre en Probadores)**
 - Estado en tiempo real de los probadores de la sección (libre, ocupado, en ordenamiento, fuera de servicio).
-- Registro de turnos en la fila (1 a 6 prendas, atención preferente con motivo).
-- Llamado de turnos, asignación de probador sugerido, registro de no presentación y abandono con motivo.
+- Llamado de turnos, asignación de probador sugerido y registro de no presentación.
 - Uso de probador sin fila, incluso registrado con atraso de hasta 15 minutos.
 - Término de uso con prendas devueltas y ordenamiento del probador.
 - Alertas de uso prolongado, probador libre sin asignar, turno sin presentarse y cierre de la fila, con vibración.
 
-**Jefatura**
-- Todo lo anterior.
+**Jefatura (abre en Resumen)**
+- Todo lo del asistente y del vendedor(a).
 - Marcar probadores fuera de servicio con motivo y foto de evidencia (cámara o galería), y volver a habilitarlos.
 - Resumen por día y franja horaria: ingresos, abandonos, espera y uso promedio, conversión y venta potencial perdida.
-- Mantenedor de colaboradores, mantenedor de probadores (agregar, cambiar el tipo, eliminar) y ajuste de parámetros de la sección.
+- Crea las cuentas de los colaboradores (solo la jefatura puede hacerlo) y restablece sus contraseñas.
+- Mantenedor de probadores (agregar, cambiar el tipo, eliminar) y ajuste de parámetros de la sección.
 - Configuración inicial de la sección la primera vez que se abre la app.
 - Cierre de jornada.
+
+**Todas las cuentas**
+- Mi perfil: ver y editar los datos propios (nombre y, en colaboradores, turno habitual).
+- Cambiar contraseña indicando la actual; recuperar la contraseña con el código de recuperación.
+- Modo punto de espera (colaboradores): deja el equipo mostrando la espera a los clientes; salir pide la contraseña.
 
 ## Tecnologías
 
@@ -54,18 +65,18 @@ Evaluación Parcial 2 · DSY1105 Desarrollo de Aplicaciones Móviles · Sección
    3. Anotar el código de recuperación que se muestra una sola vez.
 4. Desde Ajustes, la jefatura agrega al resto del equipo (Colaboradores) y administra los probadores.
 
-Al abrir la app se muestra directamente el ingreso: los colaboradores entran con su RUT y los clientes
-con "Ver tiempo de espera", sin identificarse. Si ya hay una sesión abierta, la app entra directo al panel.
+Al abrir la app se muestra directamente el ingreso. Si ya hay una sesión abierta, la app entra directo a la vista de esa cuenta.
 
 Fuera del horario de la tienda (10:00 a 21:00) se puede activar el modo demostración en Ajustes.
 
-### Ingreso de jefatura
+### Cuentas y contraseñas
 
-- Asistentes y vendedores(as) ingresan solo con su RUT. La jefatura, además, con contraseña.
-- La primera vez que una jefatura ingresa en el equipo, crea su contraseña (mínimo 6 caracteres, con letras y números)
-  y recibe un **código de recuperación** (`XXXX-XXXX`) que se muestra una sola vez.
-- Si olvida la contraseña: "¿Olvidó su contraseña?" → ingresa el código y elige una nueva (recibe un código nuevo).
-  Sin código, otra jefatura puede restablecerla en Ajustes → Colaboradores.
+- **Cliente:** crea su cuenta desde el ingreso ("Crear cuenta de cliente") con RUT, nombre y contraseña.
+- **Colaborador:** su cuenta solo la crea la jefatura en Ajustes → Colaboradores. En su primer ingreso elige su contraseña.
+- Un mismo RUT no puede tener cuenta de cliente y de colaborador.
+- Al crear o cambiar la contraseña se muestra una sola vez un **código de recuperación** (`XXXX-XXXX`).
+  Con "¿Olvidó su contraseña?" se ingresa ese código y se elige una nueva. A un colaborador sin código,
+  la jefatura le puede restablecer la contraseña.
 - 5 intentos fallidos bloquean el ingreso por 1 minuto. Las contraseñas y códigos se guardan como hash PBKDF2 con sal.
 - La pantalla recuerda los últimos accesos del equipo para ingresar con un toque.
 

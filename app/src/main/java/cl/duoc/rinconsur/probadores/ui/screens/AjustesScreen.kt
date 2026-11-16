@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.Lock
@@ -85,16 +86,18 @@ fun AjustesScreen(navController: NavController, viewModel: SeccionViewModel) {
         ) {
             sesion?.let { c ->
                 Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(Dimens.espacioMedio), verticalArrangement = Arrangement.spacedBy(Dimens.espacioMini)) {
-                        Text(c.nombre, style = MaterialTheme.typography.titleLarge)
-                        Text("${c.perfil.etiqueta} · Turno ${c.turno.etiqueta.lowercase()}")
-                        Text("RUT ${RutValidator.formatear(c.rut)}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    OpcionAjuste(
+                        Icons.Filled.AccountCircle,
+                        c.nombre,
+                        "${c.perfil.etiqueta} · Turno ${c.turno.etiqueta.lowercase()} · Ver y editar mi perfil"
+                    ) {
+                        navController.navigate(Ruta.MiPerfil.ruta)
                     }
                 }
             }
 
             Card(Modifier.fillMaxWidth()) {
-                OpcionAjuste(Icons.Filled.Visibility, "Pantalla para clientes", "Abrir la vista del punto de espera") {
+                OpcionAjuste(Icons.Filled.Visibility, "Modo punto de espera", "Deja el equipo mostrando la espera a los clientes; salir pide su contraseña") {
                     navController.navigate(Ruta.Cliente.ruta)
                 }
             }
@@ -161,7 +164,7 @@ fun AjustesScreen(navController: NavController, viewModel: SeccionViewModel) {
         AlertDialog(
             onDismissRequest = { confirmarSalida = false },
             title = { Text("¿Cerrar sesión?") },
-            text = { Text("Tendrá que ingresar su RUT nuevamente para registrar acciones.") },
+            text = { Text("Tendrá que ingresar con su RUT y contraseña nuevamente.") },
             confirmButton = {
                 Button(onClick = { confirmarSalida = false; viewModel.cerrarSesion() }) {
                     Text(stringResource(R.string.btn_cerrar_sesion))

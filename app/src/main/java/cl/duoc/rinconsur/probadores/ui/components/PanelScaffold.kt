@@ -32,6 +32,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import cl.duoc.rinconsur.probadores.R
+import cl.duoc.rinconsur.probadores.model.Perfil
 import cl.duoc.rinconsur.probadores.navigation.Ruta
 import cl.duoc.rinconsur.probadores.utils.Vibracion
 import cl.duoc.rinconsur.probadores.viewmodel.SeccionViewModel
@@ -41,7 +42,10 @@ import cl.duoc.rinconsur.probadores.viewmodel.SeccionViewModel
 //  ---------------------------------------------------------------------
 //   ┌ TopAppBar ─ título + "nombre · perfil" de la sesión
 //   │ contenido de cada pantalla
-//   └ NavigationBar ─ Probadores · Fila · Resumen (solo jefatura) · Ajustes
+//   └ NavigationBar ─ cada perfil ve primero SU pestaña de inicio:
+//        Jefatura:    Resumen · Probadores · Fila · Ajustes
+//        Asistente:   Probadores · Fila · Ajustes
+//        Vendedor(a): Fila · Probadores · Ajustes
 //
 //  Las pestañas usan saveState/restoreState: al volver a una pestaña,
 //  su scroll y estado siguen donde estaban.
@@ -53,12 +57,17 @@ private data class Pestana(
     val icono: ImageVector
 )
 
-private val pestanas = listOf(
-    Pestana(Ruta.Probadores, R.string.nav_probadores, Icons.Filled.Checkroom),
-    Pestana(Ruta.Fila, R.string.nav_fila, Icons.Filled.People),
-    Pestana(Ruta.Resumen, R.string.nav_resumen, Icons.Filled.BarChart),
-    Pestana(Ruta.Ajustes, R.string.nav_ajustes, Icons.Filled.Settings)
-)
+private val pestanaProbadores = Pestana(Ruta.Probadores, R.string.nav_probadores, Icons.Filled.Checkroom)
+private val pestanaFila = Pestana(Ruta.Fila, R.string.nav_fila, Icons.Filled.People)
+private val pestanaResumen = Pestana(Ruta.Resumen, R.string.nav_resumen, Icons.Filled.BarChart)
+private val pestanaAjustes = Pestana(Ruta.Ajustes, R.string.nav_ajustes, Icons.Filled.Settings)
+
+// La primera pestaña es la vista de inicio del perfil (ver Ruta.inicioPara).
+private fun pestanasPara(perfil: Perfil?): List<Pestana> = when (perfil) {
+    Perfil.JEFATURA -> listOf(pestanaResumen, pestanaProbadores, pestanaFila, pestanaAjustes)
+    Perfil.VENDEDOR -> listOf(pestanaFila, pestanaProbadores, pestanaAjustes)
+    else -> listOf(pestanaProbadores, pestanaFila, pestanaAjustes)
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -75,7 +84,6 @@ fun PanelScaffold(
     val panel by viewModel.panel.collectAsStateWithLifecycle()
     val urgentes = panel?.alertas?.count { it.urgente } ?: 0
     val enFila = panel?.personasEnFila ?: 0
-    val esJefatura = sesion?.perfil?.esJefatura == true
 
     // Vibra solo cuando AUMENTAN las alertas urgentes (no cada segundo).
     val contexto = LocalContext.current
@@ -109,9 +117,9 @@ fun PanelScaffold(
         },
         bottomBar = {
             NavigationBar {
-                pestanas
-                    .filter { !it.ruta.soloJefatura || esJefatura }
-                    .forEach { pestana ->
+                val pestanas = pestanasPara(sesion?.perfil)
+                val inicio = pestanas.first().ruta.ruta
+                pestanas.forEach { pestana ->
                         val contador = when (pestana.ruta) {
                             Ruta.Probadores -> urgentes
                             Ruta.Fila -> enFila
@@ -122,7 +130,7 @@ fun PanelScaffold(
                             onClick = {
                                 if (rutaActual != pestana.ruta) {
                                     navController.navigate(pestana.ruta.ruta) {
-                                        popUpTo(Ruta.Probadores.ruta) { saveState = true }
+                                        popUpTo(inicio) { saveState = true }
                                         launchSingleTop = true
                                         restoreState = true
                                     }
