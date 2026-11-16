@@ -54,6 +54,13 @@ object ReglasSeccion {
         return colaborador
     }
 
+    // Llamar turnos y operar probadores es tarea de asistentes y jefatura, no de vendedores(as).
+    private fun requerirOperador(colaborador: Colaborador) {
+        if (!colaborador.perfil.operaProbadores) {
+            throw ReglaNegocioException("Solo asistentes de probadores y jefatura pueden realizar esta acción.")
+        }
+    }
+
     private fun requerirJefatura(colaborador: Colaborador) {
         if (!colaborador.perfil.esJefatura) {
             throw ReglaNegocioException("Solo la jefatura puede realizar esta acción (RN-11).")
@@ -122,7 +129,7 @@ object ReglasSeccion {
     }
 
     fun llamarTurno(s: Seccion, turnoId: String, rut: String, ahora: Long): Seccion {
-        colaboradorActivo(s, rut)
+        requerirOperador(colaboradorActivo(s, rut))
         val t = turno(s, turnoId)
         if (t.estado != EstadoTurno.EN_ESPERA) {
             throw ReglaNegocioException("${t.codigo} no está en espera (${t.estado.etiqueta}).")
@@ -171,7 +178,7 @@ object ReglasSeccion {
         ahora: Long,
         minutosAtraso: Int = 0
     ): Seccion {
-        colaboradorActivo(s, rut)
+        requerirOperador(colaboradorActivo(s, rut))
         val p = probador(s, codigo)
         when (p.estado) {
             EstadoProbador.LIBRE -> Unit
@@ -216,7 +223,7 @@ object ReglasSeccion {
     }
 
     fun terminarUso(s: Seccion, codigo: String, devueltas: Int, rut: String, ahora: Long): Seccion {
-        colaboradorActivo(s, rut)
+        requerirOperador(colaboradorActivo(s, rut))
         val p = probador(s, codigo)
         if (p.estado != EstadoProbador.OCUPADO) {
             throw ReglaNegocioException("$codigo no está ocupado.")
@@ -234,7 +241,7 @@ object ReglasSeccion {
     }
 
     fun finalizarOrdenamiento(s: Seccion, codigo: String, rut: String, ahora: Long): Seccion {
-        colaboradorActivo(s, rut)
+        requerirOperador(colaboradorActivo(s, rut))
         val p = probador(s, codigo)
         if (p.estado != EstadoProbador.EN_ORDENAMIENTO) {
             throw ReglaNegocioException("$codigo no está en ordenamiento.")
@@ -300,6 +307,9 @@ object ReglasSeccion {
         requerirJefatura(colaboradorActivo(s, rutJefatura))
         val existe = s.colaboradores.any { it.rut == colaborador.rut }
         if (esNuevo && existe) throw ReglaNegocioException("Ya existe un colaborador con ese RUT.")
+        if (esNuevo && s.clientes.any { it.rut == colaborador.rut }) {
+            throw ReglaNegocioException("Ese RUT ya tiene una cuenta de cliente.")
+        }
         if (!esNuevo && !existe) throw ReglaNegocioException("El colaborador no existe.")
         if (colaborador.rut == rutJefatura && !colaborador.activo) {
             throw ReglaNegocioException("No puede desactivarse a sí mismo.")
@@ -392,5 +402,85 @@ object ReglasSeccion {
             probadores = s.probadores.filter { it.codigo != codigo },
             cambios = s.cambios.filter { it.codigoProbador != codigo }
         )
+    }
+
+    // ------------------------------ DATOS PROPIOS ------------------------------
+    // Cada colaborador edita su nombre y su turno habitual; el perfil y el estado solo los cambia la jefatura.
+
+    fun actualizarDatosPropios(s: Seccion, rut: String, nombre: String, turno: TurnoLaboral): Seccion {
+        val actual = colaboradorActivo(s, rut)
+        if (nombre.isBlank()) throw ReglaNegocioException("El nombre es obligatorio.")
+        val editado = actual.copy(nombre = nombre, turno = turno)
+        return s.copy(colaboradores = s.colaboradores.map { if (it.rut == rut) editado else it })
+    }
+
+    // -------------------------------- CLIENTES --------------------------------
+    // La cuenta de cliente la crea el propio cliente. Los colaboradores solo los crea la jefatura.
+
+    fun cliente(s: Seccion, rut: String): Cliente =
+        s.clientes.find { it.rut == rut } ?: throw ReglaNegocioException("No existe una cuenta de cliente con ese RUT.")
+
+    fun registrarCliente(s: Seccion, cliente: Cliente): Seccion {
+        if (!estaConfigurada(s)) throw ReglaNegocioException("La sección aún no está configurada.")
+        if (cliente.nombre.isBlank()) throw ReglaNegocioException("El nombre es obligatorio.")
+        if (s.colaboradores.any { it.rut == cliente.rut }) {
+            throw ReglaNegocioException("Ese RUT pertenece a un colaborador: ingrese con su cuenta.")
+        }
+        if (s.clientes.any { it.rut == cliente.rut }) {
+            throw ReglaNegocioException("Ya existe una cuenta con ese RUT: ingrese con su contraseña.")
+        }
+        return s.copy(clientes = s.clientes + cliente)
+    }
+
+    fun actualizarNombreCliente(s: Seccion, rut: String, nombre: String): Seccion {
+        val actual = cliente(s, rut)
+        if (nombre.isBlank()) throw ReglaNegocioException("El nombre es obligatorio.")
+        return s.copy(clientes = s.clientes.map { if (it.rut == rut) actual.copy(nombre = nombre) else it })
+    }
+
+    // El turno que el cliente tiene abierto hoy (en espera o llamado), si lo hay.
+    fun turnoAbiertoDeCliente(s: Seccion, rut: String, fecha: String): Turno? =
+        turnosDelDia(s, fecha).find { it.clienteRut == rut && it.estado.abierto }
+
+    // El cliente se suma a la fila desde su cuenta: un solo turno abierto a la vez.
+    fun tomarTurnoCliente(
+        s: Seccion,
+        rutCliente: String,
+        prendas: Int,
+        preferente: Boolean,
+        ahora: Long,
+        ignorarHorario: Boolean
+    ): Pair<Seccion, Turno> {
+        cliente(s, rutCliente)
+        validarPrendas(prendas, s.parametros.maxPrendas)
+        if (!ignorarHorario) {
+            motivoFilaCerrada(s.parametros, ahora)?.let { throw ReglaNegocioException(it) }
+        }
+        val fecha = Tiempo.fechaIso(ahora)
+        turnoAbiertoDeCliente(s, rutCliente, fecha)?.let {
+            throw ReglaNegocioException("Ya tiene el turno ${it.codigo} en la fila.")
+        }
+        val numero = (turnosDelDia(s, fecha).maxOfOrNull { it.numero } ?: 0) + 1
+        val turno = Turno(
+            id = UUID.randomUUID().toString(),
+            numero = numero,
+            fecha = fecha,
+            horaIngreso = ahora,
+            preferente = preferente,
+            prendas = prendas,
+            registradoPor = null,
+            clienteRut = rutCliente
+        )
+        return s.copy(turnos = s.turnos + turno) to turno
+    }
+
+    // El cliente se retira de la fila por su cuenta: queda como abandono con el motivo que indique.
+    fun retirarTurnoCliente(s: Seccion, rutCliente: String, motivo: MotivoAbandono, ahora: Long): Seccion {
+        cliente(s, rutCliente)
+        val turno = turnoAbiertoDeCliente(s, rutCliente, Tiempo.fechaIso(ahora))
+            ?: throw ReglaNegocioException("No tiene un turno en la fila.")
+        if (!motivo.seleccionable) throw ReglaNegocioException("Motivo no válido.")
+        val cerrado = turno.copy(estado = EstadoTurno.ABANDONO, horaCierre = ahora, motivoAbandono = motivo)
+        return s.copy(turnos = s.turnos.map { if (it.id == turno.id) cerrado else it })
     }
 }
