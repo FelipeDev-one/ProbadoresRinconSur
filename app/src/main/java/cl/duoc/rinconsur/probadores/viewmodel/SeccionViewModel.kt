@@ -4,6 +4,11 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import cl.duoc.rinconsur.probadores.ProbadoresApp
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
+import cl.duoc.rinconsur.probadores.navigation.Ruta
+import cl.duoc.rinconsur.probadores.model.ReglasAcceso
+import cl.duoc.rinconsur.probadores.model.Cliente
 import cl.duoc.rinconsur.probadores.model.Alerta
 import cl.duoc.rinconsur.probadores.model.Colaborador
 import cl.duoc.rinconsur.probadores.model.EstadoProbador
@@ -74,7 +79,16 @@ enum class EstadoApp { CARGANDO, SIN_CONFIGURAR, LISTA }
 private data class Arranque(val seccion: Seccion?, val rutSesion: String?) {
     fun colaboradorConSesion(): Colaborador? =
         seccion?.colaboradores?.find { it.rut == rutSesion && it.activo }
+
+    fun clienteConSesion(): Cliente? = seccion?.clientes?.find { it.rut == rutSesion }
 }
+
+// Lo que el cliente ve de su turno de hoy.
+data class TurnoClienteVista(
+    val turno: Turno,
+    val personasAntes: Int,
+    val estimado: Int?
+)
 
 class SeccionViewModel(application: Application) : AndroidViewModel(application) {
     private val repositorio = (application as ProbadoresApp).repositorio
@@ -102,6 +116,10 @@ class SeccionViewModel(application: Application) : AndroidViewModel(application)
     val sesion: StateFlow<Colaborador?> = arranque.map { it?.colaboradorConSesion() }
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
+    // Sesión de una cuenta de cliente (null si quien ingresó es un colaborador o no hay sesión).
+    val sesionCliente: StateFlow<Cliente?> = arranque.map { it?.clienteConSesion() }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
     private val presentacionLista = MutableStateFlow(false)
 
     // CARGANDO → SIN_CONFIGURAR (app vacía: falta crear la jefatura y los probadores) o LISTA.
@@ -114,7 +132,12 @@ class SeccionViewModel(application: Application) : AndroidViewModel(application)
     }.stateIn(viewModelScope, SharingStarted.Eagerly, EstadoApp.CARGANDO)
 
     // Se consulta una sola vez, al decidir en qué pantalla abre la app.
-    fun haySesionAlAbrir(): Boolean = arranque.value?.colaboradorConSesion() != null
+    // Devuelve la ruta de la vista propia de quien tiene la sesión abierta, o null si no hay sesión.
+    fun rutaInicialConSesion(): Ruta? {
+        val a = arranque.value ?: return null
+        a.colaboradorConSesion()?.let { return Ruta.inicioPara(it.perfil) }
+        return a.clienteConSesion()?.let { Ruta.inicioPara(null) }
+    }
 
     private val _mensaje = MutableStateFlow<Mensaje?>(null)
     val mensaje: StateFlow<Mensaje?> = _mensaje
@@ -260,6 +283,66 @@ class SeccionViewModel(application: Application) : AndroidViewModel(application)
         ReglasSeccion.habilitar(s, codigo, rut, t)
     }
 
+    // ------------------------------ CUENTA DE CLIENTE ------------------------------
+
+    // El turno abierto del cliente con sesión: cuántas personas tiene antes y su espera estimada.
+    val turnoCliente: StateFlow<TurnoClienteVista?> = combine(seccion, sesionCliente, ahora) { s, cliente, t ->
+        if (s == null || cliente == null) return@combine null
+        val fecha = Tiempo.fechaIso(t)
+        val turno = ReglasSeccion.turnoAbiertoDeCliente(s, cliente.rut, fecha) ?: return@combine null
+        val delante = ReglasSeccion.filaDelDia(s, fecha).indexOfFirst { it.id == turno.id }
+        TurnoClienteVista(turno, delante, EstimadorEspera.enSeccion(s, delante, t))
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    // Devuelve el error del campo "prendas" (o null si se pudo enviar la solicitud).
+    fun tomarTurnoCliente(prendasTexto: String, preferente: Boolean): String? {
+        val rut = sesionCliente.value?.rut ?: return "Su sesión terminó. Ingrese nuevamente."
+        val maximo = seccion.value?.parametros?.maxPrendas ?: 6
+        val prendas = prendasTexto.toIntOrNull()
+        when {
+            prendas == null -> return "Campo obligatorio"
+            prendas < 1 -> return "Debe ingresar al menos 1 prenda"
+            prendas > maximo -> return "El máximo es $maximo prendas por ingreso (RN-02)"
+        }
+        viewModelScope.launch {
+            try {
+                val turno = repositorio.actualizar { s ->
+                    ReglasSeccion.tomarTurnoCliente(s, rut, prendas!!, preferente, System.currentTimeMillis(), modoDemo.value)
+                }
+                mostrarMensaje("Turno ${turno.codigo} tomado")
+            } catch (e: ReglaNegocioException) {
+                mostrarMensaje(e.message ?: "No se pudo tomar el turno.", true)
+            }
+        }
+        return null
+    }
+
+    fun retirarTurnoCliente(motivo: MotivoAbandono) {
+        val rut = sesionCliente.value?.rut ?: return
+        viewModelScope.launch {
+            try {
+                repositorio.actualizar { s ->
+                    ReglasSeccion.retirarTurnoCliente(s, rut, motivo, System.currentTimeMillis()) to Unit
+                }
+                mostrarMensaje("Se retiró de la fila")
+            } catch (e: ReglaNegocioException) {
+                mostrarMensaje(e.message ?: "No se pudo retirar el turno.", true)
+            }
+        }
+    }
+
+    // Comprueba la clave de quien tiene la sesión (para salir del modo punto de espera).
+    fun verificarClaveDeSesion(clave: String, resultado: (Boolean) -> Unit) {
+        val rut = sesion.value?.rut ?: sesionCliente.value?.rut
+        viewModelScope.launch {
+            val credencial = rut?.let { repositorio.obtenerCredencial(it) }
+            val correcta = credencial != null && withContext(Dispatchers.Default) {
+                ReglasAcceso.contrasenaCorrecta(credencial, clave)
+            }
+            resultado(correcta)
+        }
+    }
+
     // ---------------------- MANTENEDOR DE PROBADORES (jefatura) ----------------------
 
     fun agregarProbador(tipo: TipoProbador) = ejecutar("Probador agregado") { s, rut, t ->
@@ -312,7 +395,7 @@ class SeccionViewModel(application: Application) : AndroidViewModel(application)
             return
         }
         if (actual.rut == colaborador.rut) {
-            mostrarMensaje("No puede restablecer su propia contraseña", true)
+            mostrarMensaje("Para cambiar su propia contraseña use Mi perfil", true)
             return
         }
         viewModelScope.launch {
