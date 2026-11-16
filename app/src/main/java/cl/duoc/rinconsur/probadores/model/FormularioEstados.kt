@@ -1,12 +1,17 @@
 package cl.duoc.rinconsur.probadores.model
 
 // Pasos del ingreso: RUT para todos; la jefatura sigue a contraseña (o la crea / recupera).
-enum class PasoLogin { RUT, CONTRASENA, CREAR_CONTRASENA, RECUPERAR, CODIGO_NUEVO }
+// RUT = inicio de clientes; COLABORADOR = ingreso del personal (pantalla aparte).
+enum class PasoLogin { RUT, COLABORADOR, CONTRASENA, CREAR_CONTRASENA, RECUPERAR, REGISTRO, CODIGO_NUEVO }
 
 data class LoginUiState(
     val paso: PasoLogin = PasoLogin.RUT,
+    // true mientras se ingresa por la pantalla de colaboradores.
+    val modoColaborador: Boolean = false,
     val rut: String = "",
     val nombre: String = "",
+    // "Jefatura", "Vendedor(a)", "Cliente"… para el saludo del segundo paso.
+    val rol: String = "",
     val contrasena: String = "",
     val confirmacion: String = "",
     val codigo: String = "",
@@ -14,14 +19,13 @@ data class LoginUiState(
     val cargando: Boolean = false,
     val errores: LoginErrores = LoginErrores()
 ) {
-    private val datosNombre: Colaborador
-        get() = Colaborador(rut, nombre, Perfil.JEFATURA, TurnoLaboral.MANANA)
-    val primerNombre: String get() = datosNombre.primerNombre
-    val iniciales: String get() = datosNombre.iniciales
+    val primerNombre: String get() = Nombres.primero(nombre)
+    val iniciales: String get() = Nombres.iniciales(nombre)
 }
 
 data class LoginErrores(
     val rut: String? = null,
+    val nombre: String? = null,
     val contrasena: String? = null,
     val confirmacion: String? = null,
     val codigo: String? = null

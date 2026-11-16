@@ -14,7 +14,7 @@
 
     <!-- Títulos de pantallas -->
     <string name="titulo_cliente">Probadores · Vestuario</string>
-    <string name="titulo_login">Ingreso colaboradores</string>
+    <string name="titulo_login">Ingreso</string>
     <string name="titulo_probadores">Probadores</string>
     <string name="titulo_fila">Fila de espera</string>
     <string name="titulo_resumen">Resumen</string>

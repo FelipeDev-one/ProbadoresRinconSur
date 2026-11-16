@@ -4,14 +4,20 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import cl.duoc.rinconsur.probadores.ProbadoresApp
-import cl.duoc.rinconsur.probadores.model.Colaborador
+import cl.duoc.rinconsur.probadores.model.Cliente
 import cl.duoc.rinconsur.probadores.model.Credencial
+import cl.duoc.rinconsur.probadores.model.Cuenta
 import cl.duoc.rinconsur.probadores.model.LoginErrores
 import cl.duoc.rinconsur.probadores.model.LoginUiState
 import cl.duoc.rinconsur.probadores.model.PasoLogin
+import cl.duoc.rinconsur.probadores.model.Perfil
+import cl.duoc.rinconsur.probadores.model.ReglaNegocioException
 import cl.duoc.rinconsur.probadores.model.ReglasAcceso
+import cl.duoc.rinconsur.probadores.model.ReglasSeccion
+import cl.duoc.rinconsur.probadores.model.cuenta
 import cl.duoc.rinconsur.probadores.utils.Contrasenas
 import cl.duoc.rinconsur.probadores.utils.RutValidator
+import cl.duoc.rinconsur.probadores.utils.Validaciones
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -24,12 +30,17 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 // =====================================================================
-//  LoginViewModel — ingreso de colaboradores (RF-10, RN-13)
+//  LoginViewModel — ingreso con RUT y contraseña para todas las cuentas
 //  ---------------------------------------------------------------------
-//  Paso 1: RUT (todos). Asistentes y vendedores(as) entran directo.
-//  Paso 2: solo jefatura → contraseña. Si aún no tiene, la crea y recibe
-//  un código de recuperación que se muestra UNA vez. Con ese código puede
-//  poner una contraseña nueva si la olvida. 5 intentos fallidos = 1 min bloqueado.
+//  RUT ─┬─ cuenta con contraseña ─────▶ CONTRASEÑA ─────────────▶ su vista
+//       │                                 └─ ¿la olvidó? ─▶ RECUPERAR ─┐
+//       ├─ colaborador sin contraseña ─▶ CREAR (primer ingreso) ───────┤
+//       └─ "Crear cuenta de cliente" ──▶ REGISTRO ─────────────────────┴▶ CÓDIGO NUEVO ─▶ su vista
+//
+//  La cuenta de cliente la crea el propio cliente. Las de colaborador solo las crea
+//  la jefatura (Ajustes → Colaboradores); el colaborador elige su contraseña al ingresar
+//  por primera vez. 5 intentos fallidos = 1 minuto de bloqueo.
+//  Al terminar se avisa el perfil de la cuenta (null = cliente) para abrir su vista.
 // =====================================================================
 
 class LoginViewModel(application: Application) : AndroidViewModel(application) {
@@ -39,11 +50,13 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
     private val _estado = MutableStateFlow(LoginUiState())
     val estado: StateFlow<LoginUiState> = _estado
 
-    // Accesos recientes en este equipo (solo colaboradores que siguen activos).
-    val recientes: StateFlow<List<Colaborador>> =
+    // Perfil de la cuenta que está ingresando (null = cliente).
+    private var perfilActual: Perfil? = null
+
+    // Accesos recientes en este equipo (solo cuentas que siguen activas).
+    val recientes: StateFlow<List<Cuenta>> =
         combine(repositorio.obtenerSeccion(), preferencias.obtenerRecientes()) { s, ruts ->
-            val colaboradores = s?.colaboradores ?: emptyList()
-            ruts.mapNotNull { rut -> colaboradores.find { it.rut == rut && it.activo } }
+            ruts.mapNotNull { rut -> s?.cuenta(rut)?.takeIf { it.activa } }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     // ------------------------------- CAMPOS -------------------------------
@@ -53,6 +66,9 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
         val limpio = valor.uppercase().filter { it.isDigit() || it == 'K' }.take(9)
         _estado.update { it.copy(rut = limpio, errores = it.errores.copy(rut = null)) }
     }
+
+    fun onNombreChange(valor: String) =
+        _estado.update { it.copy(nombre = valor.take(60), errores = it.errores.copy(nombre = null)) }
 
     fun onContrasenaChange(valor: String) =
         _estado.update { it.copy(contrasena = valor.take(64), errores = it.errores.copy(contrasena = null)) }
@@ -67,8 +83,25 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
 
     // ------------------------------ NAVEGACIÓN ------------------------------
 
+    // Vuelve al inicio del modo actual: clientes o colaboradores.
     fun volverAlRut() {
-        _estado.value = LoginUiState(rut = "")
+        val colaborador = _estado.value.modoColaborador
+        _estado.value = LoginUiState(
+            paso = if (colaborador) PasoLogin.COLABORADOR else PasoLogin.RUT,
+            modoColaborador = colaborador
+        )
+    }
+
+    fun irAColaboradores() {
+        _estado.value = LoginUiState(paso = PasoLogin.COLABORADOR, modoColaborador = true)
+    }
+
+    fun irAClientes() {
+        _estado.value = LoginUiState()
+    }
+
+    fun irARegistro() = _estado.update {
+        LoginUiState(paso = PasoLogin.REGISTRO, rut = it.rut)
     }
 
     fun irARecuperar() = _estado.update {
@@ -79,30 +112,28 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
         it.copy(paso = PasoLogin.CONTRASENA, contrasena = "", confirmacion = "", codigo = "", errores = LoginErrores())
     }
 
-    fun seleccionarReciente(colaborador: Colaborador, onExito: () -> Unit) {
-        _estado.update { it.copy(rut = colaborador.rut.replace("-", ""), errores = LoginErrores()) }
-        continuar(onExito)
+    fun seleccionarReciente(cuenta: Cuenta) {
+        _estado.update { it.copy(rut = cuenta.rut.replace("-", ""), errores = LoginErrores()) }
+        continuar()
     }
 
-    fun quitarReciente(colaborador: Colaborador) {
-        viewModelScope.launch { preferencias.quitarReciente(colaborador.rut) }
+    fun quitarReciente(cuenta: Cuenta) {
+        viewModelScope.launch { preferencias.quitarReciente(cuenta.rut) }
     }
 
     // -------------------------------- PASO 1 --------------------------------
 
-    fun continuar(onExito: () -> Unit) = identificar(recuperar = false, onExito)
+    fun continuar() = identificar(recuperar = false)
 
     // "¿Olvidó su contraseña?" desde la primera pantalla: pide el RUT y salta directo a recuperar.
-    fun olvideContrasena() = identificar(recuperar = true, onExito = {})
+    fun olvideContrasena() = identificar(recuperar = true)
 
-    private fun identificar(recuperar: Boolean, onExito: () -> Unit) {
+    private fun identificar(recuperar: Boolean) {
         val actual = _estado.value
         if (actual.cargando) return
         val errorFormato = when {
             actual.rut.isBlank() && recuperar -> "Ingrese su RUT para recuperar su contraseña"
-            actual.rut.isBlank() -> "Campo obligatorio"
-            !RutValidator.esValido(actual.rut) -> "RUT inválido: revise el dígito verificador"
-            else -> null
+            else -> Validaciones.rut(actual.rut)
         }
         if (errorFormato != null) {
             _estado.update { it.copy(errores = LoginErrores(rut = errorFormato)) }
@@ -111,44 +142,44 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _estado.update { it.copy(cargando = true) }
             val rut = RutValidator.normalizar(actual.rut)
-            val colaborador = repositorio.obtenerSeccion().first()?.colaboradores?.find { it.rut == rut }
+            val cuenta = repositorio.obtenerSeccion().first()?.cuenta(rut)
             val error = when {
-                colaborador == null -> "Este RUT no está registrado como colaborador"
-                !colaborador.activo -> "Colaborador inactivo: consulte con la jefatura (RN-13)"
+                cuenta == null && actual.modoColaborador ->
+                    "Este RUT no está registrado como colaborador. Consulte con la jefatura."
+                cuenta == null -> "No hay una cuenta con ese RUT. Puede crear una arriba."
+                // Cada tipo de cuenta ingresa por su propia pantalla.
+                actual.modoColaborador && cuenta.esCliente ->
+                    "Es una cuenta de cliente: ingrese desde la pantalla de clientes."
+                !actual.modoColaborador && !cuenta.esCliente ->
+                    "Es una cuenta de colaborador: use el ingreso de colaboradores."
+                !cuenta.activa -> "Colaborador inactivo: consulte con la jefatura (RN-13)"
                 else -> null
             }
-            when {
-                error != null || colaborador == null ->
-                    _estado.update { it.copy(cargando = false, errores = LoginErrores(rut = error)) }
-                !colaborador.perfil.esJefatura && recuperar -> _estado.update {
-                    it.copy(
-                        cargando = false,
-                        errores = LoginErrores(rut = "Esta cuenta ingresa solo con su RUT: no tiene contraseña")
-                    )
-                }
-                !colaborador.perfil.esJefatura -> finalizar(rut, onExito)
-                else -> {
-                    val tieneContrasena = repositorio.obtenerCredencial(rut) != null
-                    _estado.update {
-                        it.copy(
-                            cargando = false,
-                            nombre = colaborador.nombre,
-                            paso = when {
-                                !tieneContrasena -> PasoLogin.CREAR_CONTRASENA
-                                recuperar -> PasoLogin.RECUPERAR
-                                else -> PasoLogin.CONTRASENA
-                            },
-                            errores = LoginErrores()
-                        )
-                    }
-                }
+            if (error != null || cuenta == null) {
+                _estado.update { it.copy(cargando = false, errores = LoginErrores(rut = error)) }
+                return@launch
+            }
+            perfilActual = cuenta.perfil
+            val tieneContrasena = repositorio.obtenerCredencial(rut) != null
+            _estado.update {
+                it.copy(
+                    cargando = false,
+                    nombre = cuenta.nombre,
+                    rol = cuenta.rol,
+                    paso = when {
+                        !tieneContrasena -> PasoLogin.CREAR_CONTRASENA
+                        recuperar -> PasoLogin.RECUPERAR
+                        else -> PasoLogin.CONTRASENA
+                    },
+                    errores = LoginErrores()
+                )
             }
         }
     }
 
     // ------------------------------ CONTRASEÑA ------------------------------
 
-    fun ingresarConContrasena(onExito: () -> Unit) {
+    fun ingresarConContrasena(onExito: (Perfil?) -> Unit) {
         val actual = _estado.value
         if (actual.cargando) return
         if (actual.contrasena.isBlank()) {
@@ -160,16 +191,19 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
             val rut = RutValidator.normalizar(actual.rut)
             val credencial = repositorio.obtenerCredencial(rut)
             if (credencial == null) {
-                // Otra jefatura la restableció mientras tanto: se pide crear una nueva.
+                // La jefatura la restableció mientras tanto: se pide crear una nueva.
                 _estado.update { it.copy(cargando = false, paso = PasoLogin.CREAR_CONTRASENA, contrasena = "") }
                 return@launch
             }
-            val error = verificarConBloqueo(credencial, "Contraseña incorrecta") { ReglasAcceso.contrasenaCorrecta(it, actual.contrasena) }
+            val error = verificarConBloqueo(credencial, "Contraseña incorrecta") {
+                ReglasAcceso.contrasenaCorrecta(it, actual.contrasena)
+            }
             if (error == null) finalizar(rut, onExito)
             else _estado.update { it.copy(cargando = false, contrasena = "", errores = LoginErrores(contrasena = error)) }
         }
     }
 
+    // Primer ingreso de un colaborador creado por la jefatura (o tras un restablecimiento).
     fun crearContrasena() {
         val actual = _estado.value
         if (actual.cargando || !validarNueva()) return
@@ -204,13 +238,46 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                 _estado.update { it.copy(cargando = false, paso = PasoLogin.CREAR_CONTRASENA, codigo = "") }
                 return@launch
             }
-            val error = verificarConBloqueo(credencial, "Código incorrecto") { ReglasAcceso.codigoCorrecto(it, actual.codigo) }
+            val error = verificarConBloqueo(credencial, "Código incorrecto") {
+                ReglasAcceso.codigoCorrecto(it, actual.codigo)
+            }
             if (error == null) guardarNueva(rut, actual.contrasena)
             else _estado.update { it.copy(cargando = false, errores = LoginErrores(codigo = error)) }
         }
     }
 
-    fun confirmarCodigoGuardado(onExito: () -> Unit) {
+    // ---------------------------- REGISTRO DE CLIENTE ----------------------------
+
+    fun registrarCliente() {
+        val actual = _estado.value
+        if (actual.cargando) return
+        val (errorClave, errorConfirmacion) = Contrasenas.validarNueva(actual.contrasena, actual.confirmacion)
+        val errores = LoginErrores(
+            rut = Validaciones.rut(actual.rut),
+            nombre = Validaciones.nombrePersona(actual.nombre),
+            contrasena = errorClave,
+            confirmacion = errorConfirmacion
+        )
+        if (listOfNotNull(errores.rut, errores.nombre, errores.contrasena, errores.confirmacion).isNotEmpty()) {
+            _estado.update { it.copy(errores = errores) }
+            return
+        }
+        viewModelScope.launch {
+            _estado.update { it.copy(cargando = true, errores = LoginErrores()) }
+            val rut = RutValidator.normalizar(actual.rut)
+            val cliente = Cliente(rut, Validaciones.limpiarNombre(actual.nombre), System.currentTimeMillis())
+            try {
+                repositorio.actualizar { s -> ReglasSeccion.registrarCliente(s, cliente) to Unit }
+                perfilActual = null
+                _estado.update { it.copy(nombre = cliente.nombre, rol = "Cliente") }
+                guardarNueva(rut, actual.contrasena)
+            } catch (ex: ReglaNegocioException) {
+                _estado.update { it.copy(cargando = false, errores = LoginErrores(rut = ex.message)) }
+            }
+        }
+    }
+
+    fun confirmarCodigoGuardado(onExito: (Perfil?) -> Unit) {
         viewModelScope.launch { finalizar(RutValidator.normalizar(_estado.value.rut), onExito) }
     }
 
@@ -264,10 +331,10 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private suspend fun finalizar(rut: String, onExito: () -> Unit) {
+    private suspend fun finalizar(rut: String, onExito: (Perfil?) -> Unit) {
         preferencias.guardarSesion(rut)
         preferencias.agregarReciente(rut)
         _estado.value = LoginUiState()
-        onExito()
+        onExito(perfilActual)
     }
 }
