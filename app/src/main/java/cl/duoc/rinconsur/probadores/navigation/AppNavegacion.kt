@@ -33,6 +33,9 @@ import androidx.navigation.navArgument
 import cl.duoc.rinconsur.probadores.R
 import cl.duoc.rinconsur.probadores.ui.components.MensajeFlotante
 import cl.duoc.rinconsur.probadores.ui.screens.AjustesScreen
+import cl.duoc.rinconsur.probadores.ui.screens.MiPerfilScreen
+import cl.duoc.rinconsur.probadores.ui.screens.ClienteInicioScreen
+import cl.duoc.rinconsur.probadores.ui.screens.CambiarClaveScreen
 import cl.duoc.rinconsur.probadores.ui.screens.ClienteScreen
 import cl.duoc.rinconsur.probadores.ui.screens.ColaboradorFormScreen
 import cl.duoc.rinconsur.probadores.ui.screens.ColaboradoresScreen
@@ -55,15 +58,16 @@ import kotlinx.coroutines.delay
 //  ---------------------------------------------------------------------
 //   App vacía ─▶ Configuración inicial (crea la jefatura y los probadores)
 //
-//   Login ──┬─ "¿Es cliente?" ─▶ Cliente (sin sesión: espera y "consultar mi turno")
-//  (inicio) └─ RUT + clave ───▶ Probadores ⇄ Fila ⇄ Resumen ⇄ Ajustes   (barra inferior)
-//                                  │          │                  │
-//                         FueraServicio   NuevoTurno ─▶      Colaboradores ─▶ ColaboradorForm
-//                           (cámara)      TurnoConfirmado    Parámetros · Gestión de probadores
+//   Login (RUT + contraseña, o "Crear cuenta de cliente")
+//     ├─ Cliente ─────▶ ClienteInicio (su turno y su espera) ─▶ Mi perfil
+//     ├─ Vendedor(a) ─▶ Fila ⇄ Probadores (solo consulta) ⇄ Ajustes
+//     ├─ Asistente ───▶ Probadores ⇄ Fila ⇄ Ajustes
+//     └─ Jefatura ────▶ Resumen ⇄ Probadores ⇄ Fila ⇄ Ajustes
+//                          Ajustes ─▶ Mi perfil · Colaboradores · Probadores · Parámetros
 //
-//  Con sesión abierta, la app salta el Login y abre directo en el panel.
-//  SeccionViewModel se crea UNA vez aquí y se comparte con todas las pantallas
-//  del panel: así todos ven la misma información en tiempo real (Aclaración nº 7).
+//  Nada se ve sin cuenta. Con sesión abierta, la app salta el Login y abre la vista del perfil.
+//  SeccionViewModel se crea UNA vez aquí y se comparte con todas las pantallas:
+//  así todos ven la misma información en tiempo real (Aclaración nº 7).
 // =====================================================================
 
 @Composable
@@ -73,6 +77,7 @@ fun AppNavegacion() {
     val seccionViewModel: SeccionViewModel = viewModel()
     val estadoApp by seccionViewModel.estadoApp.collectAsStateWithLifecycle()
     val sesion by seccionViewModel.sesion.collectAsStateWithLifecycle()
+    val sesionCliente by seccionViewModel.sesionCliente.collectAsStateWithLifecycle()
     val mensaje by seccionViewModel.mensaje.collectAsStateWithLifecycle()
 
     when (estadoApp) {
@@ -100,28 +105,43 @@ fun AppNavegacion() {
     }
 
     // Se decide una sola vez: con sesión abierta se entra directo al panel.
-    val inicio = remember { if (seccionViewModel.haySesionAlAbrir()) Ruta.Probadores.ruta else Ruta.Login.ruta }
+    val inicio = remember { (seccionViewModel.rutaInicialConSesion() ?: Ruta.Login).ruta }
 
     // ------------------------- GUARDIAS DE ACCESO -------------------------
     // RF-10 / RN-11: sin sesión no se entra al panel; sin perfil de jefatura
     // no se entra a las pantallas de jefatura (aunque alguien llegue por error).
     val entradaActual by navController.currentBackStackEntryAsState()
     val rutaActual = Ruta.desdePatron(entradaActual?.destination?.route)
-    LaunchedEffect(sesion, rutaActual) {
+    LaunchedEffect(sesion, sesionCliente, rutaActual) {
         val ruta = rutaActual ?: return@LaunchedEffect
-        val actual = sesion
-        if (ruta.requiereSesion && actual == null) {
-            // Se espera un instante: justo después de ingresar, la sesión tarda unos
-            // milisegundos en llegar desde DataStore. Si llega, este efecto se cancela solo.
-            delay(400)
-            // Sin sesión se vuelve al ingreso y se vacía la pila: "atrás" no regresa al panel.
-            navController.navigate(Ruta.Login.ruta) {
-                popUpTo(navController.graph.id) { inclusive = true }
-                launchSingleTop = true
-            }
-        } else if (ruta.soloJefatura && actual != null && !actual.perfil.esJefatura) {
+        val colaborador = sesion
+        val cliente = sesionCliente
+        val permitido = when (ruta.acceso) {
+            Acceso.PUBLICA -> true
+            Acceso.CLIENTE -> cliente != null
+            Acceso.COLABORADOR -> colaborador != null
+            Acceso.JEFATURA -> colaborador?.perfil?.esJefatura == true
+            Acceso.CUALQUIER_SESION -> colaborador != null || cliente != null
+        }
+        if (permitido) return@LaunchedEffect
+        if (ruta.soloJefatura && colaborador != null) {
             seccionViewModel.mostrarMensaje("Solo la jefatura puede entrar aquí (RN-11)", true)
             navController.popBackStack()
+            return@LaunchedEffect
+        }
+        // Se espera un instante: justo después de ingresar, la sesión tarda unos
+        // milisegundos en llegar desde DataStore. Si llega, este efecto se cancela solo.
+        delay(400)
+        // Cada cuenta vuelve a su propia vista; sin sesión, al ingreso. Se vacía la pila
+        // para que "atrás" no regrese a una pantalla que no le corresponde.
+        val destino = when {
+            colaborador != null -> Ruta.inicioPara(colaborador.perfil)
+            cliente != null -> Ruta.ClienteInicio
+            else -> Ruta.Login
+        }
+        navController.navigate(destino.ruta) {
+            popUpTo(navController.graph.id) { inclusive = true }
+            launchSingleTop = true
         }
     }
 
@@ -141,15 +161,33 @@ fun AppNavegacion() {
             // ----------------------------- SIN SESIÓN -----------------------------
             composable(Ruta.Login.ruta) {
                 LoginScreen(
-                    onCliente = { navController.navigate(Ruta.Cliente.ruta) },
-                    onIngreso = {
-                        navController.navigate(Ruta.Probadores.ruta) {
+                    onIngreso = { perfil ->
+                        navController.navigate(Ruta.inicioPara(perfil).ruta) {
                             popUpTo(navController.graph.id) { inclusive = true }
                             launchSingleTop = true
                         }
                     }
                 )
             }
+
+            // ------------------------------ CLIENTE ------------------------------
+            composable(Ruta.ClienteInicio.ruta) {
+                ClienteInicioScreen(seccionViewModel, onPerfil = { navController.navigate(Ruta.MiPerfil.ruta) })
+            }
+
+            // ------------------------- CUALQUIER CUENTA -------------------------
+            composable(Ruta.MiPerfil.ruta) {
+                MiPerfilScreen(
+                    onVolver = { navController.navigateUp() },
+                    onCambiarClave = { navController.navigate(Ruta.CambiarClave.ruta) },
+                    onCerrarSesion = { seccionViewModel.cerrarSesion() }
+                )
+            }
+            composable(Ruta.CambiarClave.ruta) {
+                CambiarClaveScreen(onVolver = { navController.navigateUp() })
+            }
+
+            // Modo punto de espera (lo abre un colaborador desde Ajustes).
             composable(Ruta.Cliente.ruta) {
                 ClienteScreen(seccionViewModel, onVolver = { navController.navigateUp() })
             }
