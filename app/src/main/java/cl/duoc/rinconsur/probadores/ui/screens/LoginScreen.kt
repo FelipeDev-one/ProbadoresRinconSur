@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockReset
 import androidx.compose.material.icons.filled.Password
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
@@ -77,7 +78,8 @@ import cl.duoc.rinconsur.probadores.ui.components.CampoContrasena
 import cl.duoc.rinconsur.probadores.ui.components.CamposNuevaContrasena
 import cl.duoc.rinconsur.probadores.ui.components.PanelCodigoRecuperacion
 import cl.duoc.rinconsur.probadores.R
-import cl.duoc.rinconsur.probadores.model.Colaborador
+import cl.duoc.rinconsur.probadores.model.Cuenta
+import cl.duoc.rinconsur.probadores.model.Perfil
 import cl.duoc.rinconsur.probadores.model.LoginUiState
 import cl.duoc.rinconsur.probadores.model.PasoLogin
 import cl.duoc.rinconsur.probadores.ui.components.BarraConVolver
@@ -99,8 +101,7 @@ import cl.duoc.rinconsur.probadores.viewmodel.LoginViewModel
 
 @Composable
 fun LoginScreen(
-    onCliente: () -> Unit,
-    onIngreso: () -> Unit,
+    onIngreso: (Perfil?) -> Unit,
     viewModel: LoginViewModel = viewModel()
 ) {
     val estado by viewModel.estado.collectAsStateWithLifecycle()
@@ -110,7 +111,9 @@ fun LoginScreen(
     val volverPaso: () -> Unit = {
         when (estado.paso) {
             PasoLogin.RUT -> Unit
+            PasoLogin.COLABORADOR -> viewModel.irAClientes()
             PasoLogin.RECUPERAR -> viewModel.volverAContrasena()
+            PasoLogin.REGISTRO -> viewModel.volverAlRut()
             PasoLogin.CODIGO_NUEVO -> Unit
             else -> viewModel.volverAlRut()
         }
@@ -121,7 +124,7 @@ fun LoginScreen(
         // Es la primera pantalla de la app: en el paso del RUT no hay a dónde volver.
         topBar = {
             BarraConVolver(
-                stringResource(R.string.titulo_login),
+                if (estado.modoColaborador) "Ingreso de colaboradores" else stringResource(R.string.titulo_login),
                 onVolver = volverPaso.takeIf { estado.paso != PasoLogin.RUT && estado.paso != PasoLogin.CODIGO_NUEVO }
             )
         }
@@ -146,10 +149,12 @@ fun LoginScreen(
                     verticalArrangement = Arrangement.spacedBy(Dimens.espacioMedio)
                 ) {
                     when (paso) {
-                        PasoLogin.RUT -> PasoRut(estado, recientes, viewModel, onIngreso, onCliente)
+                        PasoLogin.RUT -> PasoRut(estado, recientes.filter { it.esCliente }, viewModel)
+                        PasoLogin.COLABORADOR -> PasoColaborador(estado, recientes.filter { !it.esCliente }, viewModel)
                         PasoLogin.CONTRASENA -> PasoContrasena(estado, viewModel, onIngreso)
                         PasoLogin.CREAR_CONTRASENA -> PasoCrear(estado, viewModel)
                         PasoLogin.RECUPERAR -> PasoRecuperar(estado, viewModel)
+                        PasoLogin.REGISTRO -> PasoRegistro(estado, viewModel)
                         PasoLogin.CODIGO_NUEVO -> PasoCodigoNuevo(estado, viewModel, onIngreso)
                     }
                 }
@@ -160,109 +165,197 @@ fun LoginScreen(
 
 // --------------------------------- PASO 1 ---------------------------------
 
-@OptIn(ExperimentalFoundationApi::class)
+// Pantalla inicial de la app: pensada para el CLIENTE. El personal tiene su propio ingreso.
 @Composable
 private fun PasoRut(
     estado: LoginUiState,
-    recientes: List<Colaborador>,
-    viewModel: LoginViewModel,
-    onIngreso: () -> Unit,
-    onCliente: () -> Unit
+    recientes: List<Cuenta>,
+    viewModel: LoginViewModel
 ) {
     Icon(Icons.Filled.Checkroom, contentDescription = null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary)
     Text(stringResource(R.string.marca), style = MaterialTheme.typography.headlineMedium)
+    Text(
+        "Probadores de Vestuario",
+        style = MaterialTheme.typography.titleMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+    Text(
+        "Tome su turno y siga su espera desde el teléfono, sin hacer fila.",
+        style = MaterialTheme.typography.bodyLarge,
+        textAlign = TextAlign.Center
+    )
+
+    BotonPrincipal("Crear mi cuenta", estado.cargando) { viewModel.irARegistro() }
+
+    HorizontalDivider()
+    Text("¿Ya tiene cuenta?", style = MaterialTheme.typography.titleMedium)
+    AccesosRecientes(recientes, estado.cargando, viewModel)
+    CampoRut(estado.rut, viewModel::onRutChange, estado.errores.rut, ImeAction.Done) { viewModel.continuar() }
+    OutlinedButton(
+        onClick = viewModel::continuar,
+        enabled = !estado.cargando,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(Dimens.alturaBoton)
+    ) {
+        Text("Ingresar", style = MaterialTheme.typography.titleMedium)
+    }
+    TextButton(onClick = viewModel::olvideContrasena, enabled = !estado.cargando) {
+        Text("¿Olvidó su contraseña?")
+    }
+
+    HorizontalDivider()
+    TextButton(onClick = viewModel::irAColaboradores, enabled = !estado.cargando) {
+        Icon(Icons.Filled.Badge, contentDescription = null)
+        Spacer(Modifier.width(ButtonDefaults.IconSpacing))
+        Text("¿Trabaja en la tienda? Ingreso de colaboradores")
+    }
+}
+
+// Ingreso del personal: asistentes, vendedores(as) y jefatura. Sus cuentas las crea la jefatura.
+@Composable
+private fun PasoColaborador(
+    estado: LoginUiState,
+    recientes: List<Cuenta>,
+    viewModel: LoginViewModel
+) {
+    Icon(Icons.Filled.Badge, contentDescription = null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary)
+    Text("Ingreso de colaboradores", style = MaterialTheme.typography.headlineSmall)
     Text(
         stringResource(R.string.sucursal),
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         textAlign = TextAlign.Center
     )
-    Text("Ingreso de colaboradores", style = MaterialTheme.typography.titleLarge)
     Text(
-        if (recientes.isEmpty()) "Ingrese su RUT para registrar acciones en la sección"
-        else "Toque su nombre o ingrese su RUT",
+        if (recientes.isEmpty()) "Ingrese con su RUT y contraseña" else "Toque su nombre o ingrese su RUT",
+        style = MaterialTheme.typography.titleMedium,
+        textAlign = TextAlign.Center
+    )
+    AccesosRecientes(recientes, estado.cargando, viewModel)
+    CampoRut(estado.rut, viewModel::onRutChange, estado.errores.rut, ImeAction.Done) { viewModel.continuar() }
+    BotonPrincipal("Continuar", estado.cargando) { viewModel.continuar() }
+    TextButton(onClick = viewModel::olvideContrasena, enabled = !estado.cargando) {
+        Text("¿Olvidó su contraseña?")
+    }
+    Text(
+        "Su cuenta la crea la jefatura en Ajustes → Colaboradores. En su primer ingreso elegirá su contraseña.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        textAlign = TextAlign.Center
+    )
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun AccesosRecientes(recientes: List<Cuenta>, cargando: Boolean, viewModel: LoginViewModel) {
+    if (recientes.isEmpty()) return
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(Dimens.espacioChico)) {
+        Text("Accesos recientes", style = MaterialTheme.typography.titleSmall)
+        Row(horizontalArrangement = Arrangement.spacedBy(Dimens.espacioMedio)) {
+            recientes.forEach { c ->
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .width(76.dp)
+                        .clip(MaterialTheme.shapes.medium)
+                        .combinedClickable(
+                            enabled = !cargando,
+                            onClickLabel = "Ingresar como ${c.nombreCorto}",
+                            onLongClickLabel = "Quitar de accesos recientes",
+                            onClick = { viewModel.seleccionarReciente(c) },
+                            onLongClick = { viewModel.quitarReciente(c) }
+                        )
+                        .padding(vertical = Dimens.espacioMini)
+                ) {
+                    Avatar(c.iniciales, tamano = 52)
+                    Text(c.nombreCorto, style = MaterialTheme.typography.labelMedium, maxLines = 1, textAlign = TextAlign.Center)
+                }
+            }
+        }
+        Text(
+            "Mantenga presionado un nombre para quitarlo.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+// ---------------------------- REGISTRO DE CLIENTE ----------------------------
+
+@Composable
+private fun PasoRegistro(estado: LoginUiState, viewModel: LoginViewModel) {
+    Icon(Icons.Filled.PersonAdd, contentDescription = null, modifier = Modifier.size(56.dp), tint = MaterialTheme.colorScheme.primary)
+    Text("Crear cuenta de cliente", style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
+    Text(
+        "Con su cuenta podrá tomar un turno para los probadores y seguir su espera desde el teléfono.",
         style = MaterialTheme.typography.bodyLarge,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         textAlign = TextAlign.Center
     )
-
-    if (recientes.isNotEmpty()) {
-        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(Dimens.espacioChico)) {
-            Text("Accesos recientes", style = MaterialTheme.typography.titleSmall)
-            Row(horizontalArrangement = Arrangement.spacedBy(Dimens.espacioMedio)) {
-                recientes.forEach { c ->
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier
-                            .width(76.dp)
-                            .clip(MaterialTheme.shapes.medium)
-                            .combinedClickable(
-                                enabled = !estado.cargando,
-                                onClickLabel = "Ingresar como ${c.nombreCorto}",
-                                onLongClickLabel = "Quitar de accesos recientes",
-                                onClick = { viewModel.seleccionarReciente(c, onIngreso) },
-                                onLongClick = { viewModel.quitarReciente(c) }
-                            )
-                            .padding(vertical = Dimens.espacioMini)
-                    ) {
-                        Avatar(c.iniciales, tamano = 52)
-                        Text(c.nombreCorto, style = MaterialTheme.typography.labelMedium, maxLines = 1, textAlign = TextAlign.Center)
-                    }
-                }
-            }
-            Text(
-                "Mantenga presionado un nombre para quitarlo.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-    }
-
-    val rutValido = RutValidator.esValido(estado.rut)
+    CampoRut(estado.rut, viewModel::onRutChange, estado.errores.rut, ImeAction.Next) {}
     CampoTexto(
-        valor = estado.rut,
-        onCambio = viewModel::onRutChange,
-        etiqueta = "RUT",
+        valor = estado.nombre,
+        onCambio = viewModel::onNombreChange,
+        etiqueta = "Nombre completo",
         icono = Icons.Filled.Person,
-        error = estado.errores.rut,
+        error = estado.errores.nombre,
+        ayuda = "Nombre y apellido",
+        opcionesTeclado = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Next)
+    )
+    CamposNuevaContrasena(
+        contrasena = estado.contrasena,
+        confirmacion = estado.confirmacion,
+        errorContrasena = estado.errores.contrasena,
+        errorConfirmacion = estado.errores.confirmacion,
+        onContrasena = viewModel::onContrasenaChange,
+        onConfirmacion = viewModel::onConfirmacionChange,
+        onDone = viewModel::registrarCliente,
+        etiqueta = "Contraseña"
+    )
+    BotonPrincipal("Crear mi cuenta", estado.cargando) { viewModel.registrarCliente() }
+    Text(
+        "Solo guardamos su RUT y su nombre para identificar su turno.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        textAlign = TextAlign.Center
+    )
+}
+
+@Composable
+private fun CampoRut(
+    valor: String,
+    onCambio: (String) -> Unit,
+    error: String?,
+    imeAction: ImeAction,
+    onDone: () -> Unit
+) {
+    val rutValido = RutValidator.esValido(valor)
+    CampoTexto(
+        valor = valor,
+        onCambio = onCambio,
+        etiqueta = "RUT",
+        icono = Icons.Filled.Badge,
+        error = error,
         ayuda = if (rutValido) "RUT válido" else "Los puntos y el guion se agregan solos",
         placeholder = "12.345.678-9",
         transformacionVisual = RutVisualTransformation,
-        accionFinal = if (rutValido && estado.errores.rut == null) {
+        accionFinal = if (rutValido && error == null) {
             { Icon(Icons.Filled.CheckCircle, contentDescription = "RUT válido", tint = MaterialTheme.colorScheme.primary) }
         } else null,
         opcionesTeclado = KeyboardOptions(
             keyboardType = KeyboardType.Ascii,
             capitalization = KeyboardCapitalization.Characters,
-            imeAction = ImeAction.Done
+            imeAction = imeAction
         ),
-        accionesTeclado = KeyboardActions(onDone = { viewModel.continuar(onIngreso) })
+        accionesTeclado = KeyboardActions(onDone = { onDone() })
     )
-    BotonPrincipal("Continuar", estado.cargando) { viewModel.continuar(onIngreso) }
-    TextButton(onClick = viewModel::olvideContrasena, enabled = !estado.cargando) {
-        Text("¿Olvidó su contraseña?")
-    }
-
-    // El cliente no se identifica ni entrega datos personales (RNF-06).
-    HorizontalDivider()
-    Text("¿Es cliente?", style = MaterialTheme.typography.titleMedium)
-    OutlinedButton(
-        onClick = onCliente,
-        enabled = !estado.cargando,
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(Dimens.alturaBoton)
-    ) {
-        Icon(Icons.Filled.Timer, contentDescription = null)
-        Spacer(Modifier.width(ButtonDefaults.IconSpacing))
-        Text("Ver tiempo de espera", style = MaterialTheme.typography.titleMedium)
-    }
 }
 
 // ------------------------------- CONTRASEÑA -------------------------------
 
 @Composable
-private fun PasoContrasena(estado: LoginUiState, viewModel: LoginViewModel, onIngreso: () -> Unit) {
+private fun PasoContrasena(estado: LoginUiState, viewModel: LoginViewModel, onIngreso: (Perfil?) -> Unit) {
     CabeceraUsuario(estado, onNoSoyYo = viewModel::volverAlRut)
     CampoContrasena(
         valor = estado.contrasena,
@@ -283,8 +376,8 @@ private fun PasoCrear(estado: LoginUiState, viewModel: LoginViewModel) {
     CabeceraUsuario(estado, onNoSoyYo = viewModel::volverAlRut)
     Aviso(
         Icons.Filled.Lock,
-        "Primera vez en este equipo",
-        "Cree una contraseña para proteger las acciones de jefatura. La pediremos cada vez que ingrese."
+        "Primer ingreso",
+        "La jefatura creó su cuenta. Elija ahora su contraseña: la pediremos cada vez que ingrese."
     )
     NuevaContrasena(estado, viewModel) { viewModel.crearContrasena() }
     BotonPrincipal("Crear contraseña", estado.cargando) { viewModel.crearContrasena() }
@@ -315,7 +408,7 @@ private fun PasoRecuperar(estado: LoginUiState, viewModel: LoginViewModel) {
     NuevaContrasena(estado, viewModel) { viewModel.recuperar() }
     BotonPrincipal("Guardar contraseña", estado.cargando) { viewModel.recuperar() }
     Text(
-        "¿No tiene el código? Pida a otra jefatura que restablezca su contraseña en Ajustes → Colaboradores.",
+        "¿No tiene el código? Si es colaborador, pida a la jefatura que restablezca su contraseña en Ajustes → Colaboradores.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         textAlign = TextAlign.Center
@@ -323,10 +416,10 @@ private fun PasoRecuperar(estado: LoginUiState, viewModel: LoginViewModel) {
 }
 
 @Composable
-private fun PasoCodigoNuevo(estado: LoginUiState, viewModel: LoginViewModel, onIngreso: () -> Unit) {
+private fun PasoCodigoNuevo(estado: LoginUiState, viewModel: LoginViewModel, onIngreso: (Perfil?) -> Unit) {
     PanelCodigoRecuperacion(
         codigo = estado.codigoGenerado ?: "",
-        textoBoton = "Ingresar al panel",
+        textoBoton = "Ingresar",
         cargando = estado.cargando,
         onConfirmar = { viewModel.confirmarCodigoGuardado(onIngreso) }
     )
@@ -363,7 +456,7 @@ private fun CabeceraUsuario(estado: LoginUiState, onNoSoyYo: () -> Unit) {
         Column(Modifier.weight(1f)) {
             Text("Hola, ${estado.primerNombre}", style = MaterialTheme.typography.titleLarge)
             Text(
-                "Jefatura · RUT ${RutValidator.formatear(RutValidator.normalizar(estado.rut))}",
+                "${estado.rol} · RUT ${RutValidator.formatear(RutValidator.normalizar(estado.rut))}",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
