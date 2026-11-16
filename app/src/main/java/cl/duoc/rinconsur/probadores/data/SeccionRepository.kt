@@ -27,6 +27,7 @@ import kotlinx.coroutines.flow.map
 
 class SeccionRepository(private val db: ProbadoresDatabase) {
     private val colaboradores = db.colaboradorDao()
+    private val clientes = db.clienteDao()
     private val probadores = db.probadorDao()
     private val turnos = db.turnoDao()
     private val usos = db.usoDao()
@@ -82,6 +83,7 @@ class SeccionRepository(private val db: ProbadoresDatabase) {
         return Seccion(
             probadores = listaProbadores.map { it.aModelo() },
             colaboradores = listaColaboradores.map { it.aModelo() },
+            clientes = clientes.todos().map { it.aModelo() },
             turnos = turnos.todos().map { it.aModelo() },
             usos = usos.todos().map { it.aModelo() },
             cambios = cambios.todos().map { it.aModelo() },
@@ -94,12 +96,14 @@ class SeccionRepository(private val db: ProbadoresDatabase) {
     // probadores, turnos) y después los "hijos" (usos, cambios); al borrar, al revés.
     private suspend fun guardarCambios(antes: Seccion, despues: Seccion) {
         val dColaboradores = diferencias(antes.colaboradores, despues.colaboradores) { it.rut }
+        val dClientes = diferencias(antes.clientes, despues.clientes) { it.rut }
         val dProbadores = diferencias(antes.probadores, despues.probadores) { it.codigo }
         val dTurnos = diferencias(antes.turnos, despues.turnos) { it.id }
         val dUsos = diferencias(antes.usos, despues.usos) { it.id }
         val dCambios = diferencias(antes.cambios, despues.cambios) { Triple(it.codigoProbador, it.fechaHora, it.nuevo) }
 
         if (dColaboradores.guardar.isNotEmpty()) colaboradores.guardar(dColaboradores.guardar.map { it.aEntidad() })
+        if (dClientes.guardar.isNotEmpty()) clientes.guardar(dClientes.guardar.map { it.aEntidad() })
         if (dProbadores.guardar.isNotEmpty()) probadores.guardar(dProbadores.guardar.map { it.aEntidad() })
         if (dTurnos.guardar.isNotEmpty()) turnos.guardar(dTurnos.guardar.map { it.aEntidad() })
         if (dUsos.guardar.isNotEmpty()) usos.guardar(dUsos.guardar.map { it.aEntidad() })
@@ -111,6 +115,7 @@ class SeccionRepository(private val db: ProbadoresDatabase) {
         if (dCambios.eliminar.isNotEmpty()) cambios.eliminar(dCambios.eliminar.map { it.aEntidad() })
         if (dUsos.eliminar.isNotEmpty()) usos.eliminar(dUsos.eliminar.map { it.aEntidad() })
         if (dTurnos.eliminar.isNotEmpty()) turnos.eliminar(dTurnos.eliminar.map { it.aEntidad() })
+        if (dClientes.eliminar.isNotEmpty()) clientes.eliminar(dClientes.eliminar.map { it.aEntidad() })
         if (dProbadores.eliminar.isNotEmpty()) probadores.eliminar(dProbadores.eliminar.map { it.aEntidad() })
         if (dColaboradores.eliminar.isNotEmpty()) colaboradores.eliminar(dColaboradores.eliminar.map { it.aEntidad() })
     }

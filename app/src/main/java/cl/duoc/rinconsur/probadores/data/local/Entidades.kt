@@ -6,6 +6,7 @@ import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
 import cl.duoc.rinconsur.probadores.model.CambioEstado
+import cl.duoc.rinconsur.probadores.model.Cliente
 import cl.duoc.rinconsur.probadores.model.Colaborador
 import cl.duoc.rinconsur.probadores.model.Credencial
 import cl.duoc.rinconsur.probadores.model.EstadoProbador
@@ -22,13 +23,14 @@ import cl.duoc.rinconsur.probadores.model.Uso
 // =====================================================================
 //  Entidades de Room — una clase por tabla
 //  ---------------------------------------------------------------------
-//   colaboradores ──┬──< turnos        (quién registró el turno)
-//        │          ├──< usos          (quién registró el inicio del uso)
-//        │          ├──< cambios_estado
-//        │          └──1 credenciales  (se borra junto con el colaborador)
+//   clientes ───────────< turnos        (el cliente que tomó el turno desde su cuenta)
+//   colaboradores ──┬──< turnos        (quién registró el turno en el mesón)
+//                   ├──< usos          (quién registró el inicio del uso)
+//                   └──< cambios_estado
 //   probadores ─────┬──< usos          (en qué probador fue el uso)
 //                   └──< cambios_estado
 //   turnos ─────────────0..1 usos      (el uso que atendió ese turno)
+//   credenciales: una por RUT, sea de colaborador o de cliente (sin clave foránea).
 //
 //  Cada entidad sabe convertirse a su clase del modelo (aModelo) y de vuelta
 //  (aEntidad). Las reglas de negocio solo conocen el modelo, nunca la base de datos.
@@ -47,6 +49,17 @@ data class ColaboradorEntity(
 }
 
 fun Colaborador.aEntidad() = ColaboradorEntity(rut, nombre, perfil, turno, activo)
+
+@Entity(tableName = "clientes")
+data class ClienteEntity(
+    @PrimaryKey val rut: String,
+    val nombre: String,
+    val creado: Long
+) {
+    fun aModelo() = Cliente(rut, nombre, creado)
+}
+
+fun Cliente.aEntidad() = ClienteEntity(rut, nombre, creado)
 
 @Entity(tableName = "probadores")
 data class ProbadorEntity(
@@ -73,9 +86,15 @@ fun Probador.aEntidad() =
             parentColumns = ["rut"],
             childColumns = ["registrado_por"],
             onDelete = ForeignKey.RESTRICT
+        ),
+        ForeignKey(
+            entity = ClienteEntity::class,
+            parentColumns = ["rut"],
+            childColumns = ["cliente_rut"],
+            onDelete = ForeignKey.SET_NULL
         )
     ],
-    indices = [Index("registrado_por"), Index("fecha")]
+    indices = [Index("registrado_por"), Index("cliente_rut"), Index("fecha")]
 )
 data class TurnoEntity(
     @PrimaryKey val id: String,
@@ -88,17 +107,18 @@ data class TurnoEntity(
     @ColumnInfo(name = "hora_llamado") val horaLlamado: Long?,
     @ColumnInfo(name = "hora_cierre") val horaCierre: Long?,
     @ColumnInfo(name = "motivo_abandono") val motivoAbandono: MotivoAbandono?,
-    @ColumnInfo(name = "registrado_por") val registradoPor: String
+    @ColumnInfo(name = "registrado_por") val registradoPor: String?,
+    @ColumnInfo(name = "cliente_rut") val clienteRut: String?
 ) {
     fun aModelo() = Turno(
         id, numero, fecha, horaIngreso, preferente, prendas, estado,
-        horaLlamado, horaCierre, motivoAbandono, registradoPor
+        horaLlamado, horaCierre, motivoAbandono, registradoPor, clienteRut
     )
 }
 
 fun Turno.aEntidad() = TurnoEntity(
     id, numero, fecha, horaIngreso, preferente, prendas, estado,
-    horaLlamado, horaCierre, motivoAbandono, registradoPor
+    horaLlamado, horaCierre, motivoAbandono, registradoPor, clienteRut
 )
 
 @Entity(
@@ -213,18 +233,9 @@ fun Parametros.aEntidad() = ParametrosEntity(
     umbralAyuda, minutosPresentarse, ticketPromedio, horaApertura, horaCierre, minutosCierreFila
 )
 
-// Clave de ingreso (solo hashes). Si se elimina el colaborador, se elimina su credencial.
-@Entity(
-    tableName = "credenciales",
-    foreignKeys = [
-        ForeignKey(
-            entity = ColaboradorEntity::class,
-            parentColumns = ["rut"],
-            childColumns = ["rut"],
-            onDelete = ForeignKey.CASCADE
-        )
-    ]
-)
+// Clave de ingreso (solo hashes). Una por RUT; el RUT puede ser de un colaborador o de un cliente,
+// por eso no lleva clave foránea: las reglas de negocio impiden que un RUT esté en ambas tablas.
+@Entity(tableName = "credenciales")
 data class CredencialEntity(
     @PrimaryKey val rut: String,
     val hash: String,

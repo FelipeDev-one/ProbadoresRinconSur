@@ -35,6 +35,18 @@ interface ColaboradorDao {
 }
 
 @Dao
+interface ClienteDao {
+    @Query("SELECT * FROM clientes")
+    suspend fun todos(): List<ClienteEntity>
+
+    @Upsert
+    suspend fun guardar(items: List<ClienteEntity>)
+
+    @Delete
+    suspend fun eliminar(items: List<ClienteEntity>)
+}
+
+@Dao
 interface ProbadorDao {
     @Query("SELECT * FROM probadores ORDER BY codigo")
     suspend fun todos(): List<ProbadorEntity>

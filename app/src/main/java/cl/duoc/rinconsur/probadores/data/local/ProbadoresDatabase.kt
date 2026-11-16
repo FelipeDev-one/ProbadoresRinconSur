@@ -9,6 +9,7 @@ import androidx.room.RoomDatabase
 @Database(
     entities = [
         ColaboradorEntity::class,
+        ClienteEntity::class,
         ProbadorEntity::class,
         TurnoEntity::class,
         UsoEntity::class,
@@ -16,11 +17,12 @@ import androidx.room.RoomDatabase
         ParametrosEntity::class,
         CredencialEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class ProbadoresDatabase : RoomDatabase() {
     abstract fun colaboradorDao(): ColaboradorDao
+    abstract fun clienteDao(): ClienteDao
     abstract fun probadorDao(): ProbadorDao
     abstract fun turnoDao(): TurnoDao
     abstract fun usoDao(): UsoDao
@@ -32,10 +34,14 @@ abstract class ProbadoresDatabase : RoomDatabase() {
         const val NOMBRE = "probadores_rincon_sur.db"
 
         val TABLAS = arrayOf(
-            "colaboradores", "probadores", "turnos", "usos", "cambios_estado", "parametros"
+            "colaboradores", "clientes", "probadores", "turnos", "usos", "cambios_estado", "parametros"
         )
 
         fun crear(context: Context): ProbadoresDatabase =
-            Room.databaseBuilder(context.applicationContext, ProbadoresDatabase::class.java, NOMBRE).build()
+            Room.databaseBuilder(context.applicationContext, ProbadoresDatabase::class.java, NOMBRE)
+                // MVP con datos ficticios: si cambia el esquema, la base se recrea vacía
+                // y la app vuelve a pedir la configuración inicial.
+                .fallbackToDestructiveMigration(dropAllTables = true)
+                .build()
     }
 }
