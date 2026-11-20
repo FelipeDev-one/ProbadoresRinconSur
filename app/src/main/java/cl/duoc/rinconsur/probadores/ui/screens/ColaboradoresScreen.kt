@@ -1,5 +1,14 @@
 package cl.duoc.rinconsur.probadores.ui.screens
 
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.Row
+import androidx.compose.material3.Switch
+import androidx.compose.material.icons.filled.Search
+import cl.duoc.rinconsur.probadores.model.Perfil
+import cl.duoc.rinconsur.probadores.ui.components.CampoTexto
+import cl.duoc.rinconsur.probadores.ui.components.OpcionFiltro
+import cl.duoc.rinconsur.probadores.ui.components.FiltroChips
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -47,10 +56,22 @@ fun ColaboradoresScreen(navController: NavController, viewModel: SeccionViewMode
     val sesion by viewModel.sesion.collectAsStateWithLifecycle()
     val conContrasena by viewModel.rutsConContrasena.collectAsStateWithLifecycle()
     var porRestablecer by remember { mutableStateOf<Colaborador?>(null) }
+    var buscar by rememberSaveable { mutableStateOf("") }
+    // null = todos los perfiles.
+    var perfil by rememberSaveable { mutableStateOf<Perfil?>(null) }
+    var verInactivos by rememberSaveable { mutableStateOf(false) }
 
-    val colaboradores = seccion?.colaboradores
+    val todos = seccion?.colaboradores
         ?.sortedWith(compareByDescending<Colaborador> { it.activo }.thenBy { it.nombre })
         ?: emptyList()
+    val texto = buscar.trim().lowercase()
+    val rutBuscado = texto.filter { it.isDigit() || it == 'k' }
+    val colaboradores = todos.filter { c ->
+        (verInactivos || c.activo) &&
+            (perfil == null || c.perfil == perfil) &&
+            (texto.isEmpty() || c.nombre.lowercase().contains(texto) ||
+                (rutBuscado.isNotEmpty() && c.rut.lowercase().replace("-", "").contains(rutBuscado)))
+    }
 
     Scaffold(
         topBar = { BarraConVolver(stringResource(R.string.titulo_colaboradores), onVolver = { navController.navigateUp() }) },
@@ -72,6 +93,35 @@ fun ColaboradoresScreen(navController: NavController, viewModel: SeccionViewMode
                 .fillMaxSize()
                 .padding(padding)
         ) {
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(Dimens.espacioChico)) {
+                    CampoTexto(
+                        valor = buscar,
+                        onCambio = { buscar = it.take(40) },
+                        etiqueta = "Buscar por nombre o RUT",
+                        icono = Icons.Filled.Search,
+                        error = null
+                    )
+                    FiltroChips(
+                        opciones = listOf(OpcionFiltro<Perfil?>(null, "Todos", todos.count { verInactivos || it.activo })) +
+                            Perfil.entries.map { p -> OpcionFiltro<Perfil?>(p, p.etiqueta, todos.count { it.perfil == p && (verInactivos || it.activo) }) },
+                        seleccionado = perfil,
+                        onSeleccion = { perfil = it }
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Mostrar inactivos (${todos.count { !it.activo }})", modifier = Modifier.weight(1f))
+                        Switch(checked = verInactivos, onCheckedChange = { verInactivos = it })
+                    }
+                }
+            }
+            if (colaboradores.isEmpty()) {
+                item {
+                    Text(
+                        "Ningún colaborador coincide con la búsqueda.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
             items(colaboradores, key = { it.rut }) { c ->
                 val tieneContrasena = c.rut in conContrasena
                 Card(onClick = { navController.navigate(Ruta.ColaboradorForm.crear(c.rut)) }) {
