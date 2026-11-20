@@ -1,5 +1,6 @@
 package cl.duoc.rinconsur.probadores.ui.screens
 
+import cl.duoc.rinconsur.probadores.ui.components.CampoTexto
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -99,29 +100,24 @@ fun NuevoTurnoScreen(
                     FilledIconButton(onClick = { viewModel.sumarPrenda(-1) }, modifier = Modifier.size(56.dp)) {
                         Icon(Icons.Filled.Remove, contentDescription = "Quitar una prenda")
                     }
-                    OutlinedTextField(
-                        value = estado.prendas,
-                        onValueChange = viewModel::onPrendasChange,
-                        label = { Text("Prendas") },
-                        leadingIcon = { Icon(Icons.Filled.Checkroom, contentDescription = null) },
-                        trailingIcon = if (estado.errores.prendas != null) {
-                            { Icon(Icons.Filled.Error, contentDescription = "Error", tint = MaterialTheme.colorScheme.error) }
-                        } else null,
-                        singleLine = true,
-                        isError = estado.errores.prendas != null,
-                        textStyle = MaterialTheme.typography.headlineMedium.copy(textAlign = TextAlign.Center),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    CampoTexto(
+                        valor = estado.prendas,
+                        onCambio = viewModel::onPrendasChange,
+                        etiqueta = "Prendas",
+                        icono = Icons.Filled.Checkroom,
+                        error = estado.errores.prendas,
+                        estiloTexto = MaterialTheme.typography.headlineMedium.copy(textAlign = TextAlign.Center),
+                        opcionesTeclado = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.weight(1f)
                     )
                     FilledIconButton(onClick = { viewModel.sumarPrenda(1) }, modifier = Modifier.size(56.dp)) {
                         Icon(Icons.Filled.Add, contentDescription = "Agregar una prenda")
                     }
                 }
-                MensajeError(estado.errores.prendas)
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = estado.preferente, onCheckedChange = viewModel::onPreferenteChange)
-                    Text("Atención preferente (prioridad para P-08)", style = MaterialTheme.typography.bodyLarge)
+                    Text("Atención preferente (prioridad para el probador accesible)", style = MaterialTheme.typography.bodyLarge)
                 }
                 AnimatedVisibility(
                     visible = estado.preferente,
