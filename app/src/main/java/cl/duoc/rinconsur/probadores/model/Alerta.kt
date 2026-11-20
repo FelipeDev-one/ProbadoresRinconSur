@@ -10,9 +10,12 @@ sealed class Alerta(val titulo: String, val detalle: String, val urgente: Boolea
         urgente = ofrecerAyuda
     )
 
-    class ProbadorSinAsignar(codigo: String, minutos: Int, personas: Int) : Alerta(
-        titulo = "$codigo libre sin asignar",
-        detalle = "Libre hace $minutos min y hay $personas en la fila.",
+    // Agrupada: una sola alerta para todos los probadores libres mientras hay fila,
+    // en vez de una tarjeta por probador (menos información repetida en pantalla).
+    class ProbadoresSinAsignar(codigos: List<String>, personas: Int) : Alerta(
+        titulo = if (codigos.size == 1) "${codigos.first()} libre sin asignar"
+        else "${codigos.size} probadores libres sin asignar",
+        detalle = "${codigos.joinToString(", ")} · hay $personas en la fila.",
         urgente = true
     )
 
@@ -34,6 +37,7 @@ object GeneradorAlertas {
         val p = s.parametros
         val alertas = mutableListOf<Alerta>()
         val enEspera = fila.count { it.estado == EstadoTurno.EN_ESPERA }
+        val libresSinAsignar = mutableListOf<String>()
 
         s.probadores.forEach { probador ->
             val minutos = Tiempo.minutosEntre(probador.desde, ahora)
@@ -43,10 +47,14 @@ object GeneradorAlertas {
                     alertas += Alerta.UsoProlongado(probador.codigo, minutos, ayuda)
                 }
                 EstadoProbador.LIBRE -> if (enEspera > 0 && minutos >= 1) {
-                    alertas += Alerta.ProbadorSinAsignar(probador.codigo, minutos, enEspera)
+                    libresSinAsignar += probador.codigo
                 }
                 else -> Unit
             }
+        }
+
+        if (libresSinAsignar.isNotEmpty()) {
+            alertas += Alerta.ProbadoresSinAsignar(libresSinAsignar, enEspera)
         }
 
         fila.filter { it.estado == EstadoTurno.LLAMADO }.forEach { turno ->
