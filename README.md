@@ -4,7 +4,7 @@ Aplicación móvil para la sección Vestuario de Tienda Rincón Sur (sucursal RS
 Permite llevar la fila de espera y el estado de los probadores, informar al cliente el tiempo
 estimado de espera y entregar a la jefatura un resumen diario con la venta potencial perdida.
 
-Evaluación Parcial 2 · DSY1105 Desarrollo de Aplicaciones Móviles · Sección 003D · Equipo EQ020
+Evaluación Sumativa 3 · DSY1105 Desarrollo de Aplicaciones Móviles · Sección 003D · Equipo EQ020
 
 ## Integrantes
 
@@ -45,6 +45,18 @@ Todas las cuentas ingresan con **RUT y contraseña**. Nada se ve sin cuenta, y c
 - Cambiar contraseña indicando la actual; recuperar la contraseña con el código de recuperación.
 - Modo punto de espera (colaboradores): deja el equipo mostrando la espera a los clientes; salir pide la contraseña.
 
+**Búsqueda y filtros**
+- Probadores: filtro por estado (libres, ocupados, en ordenamiento, fuera de servicio) con la cantidad de cada uno.
+- Fila: filtro por en espera, llamados o preferentes, y búsqueda por número de turno.
+- Colaboradores (jefatura): búsqueda por nombre o RUT, filtro por perfil y opción para ver los inactivos.
+- Las alertas de probadores libres se agrupan en una sola ("3 probadores libres sin asignar").
+
+**Notificaciones (segundo recurso nativo)**
+- Permiso `POST_NOTIFICATIONS`, pedido en el momento en que tiene sentido: al personal al entrar al panel y al cliente al tomar su turno.
+- Personal: aviso cuando aparece una alerta urgente (uso prolongado con fila o probadores libres sin asignar). Se puede desactivar en Ajustes.
+- Cliente: aviso cuando llaman su turno.
+- Funcionan con la app abierta o en segundo plano, mientras el sistema no la cierre.
+
 ## Tecnologías
 
 - Kotlin, Jetpack Compose y Material 3
@@ -54,6 +66,7 @@ Todas las cuentas ingresan con **RUT y contraseña**. Nada se ve sin cuenta, y c
 - DataStore Preferences solo para la sesión y las preferencias del equipo
 - Cámara y galería con ActivityResultLauncher y FileProvider
 - Vibración del dispositivo
+- Notificaciones locales con canales y permiso en tiempo de ejecución
 
 ## Ejecución
 
@@ -108,9 +121,9 @@ data/         repositorio y preferencias
 data/local/   base de datos Room: entidades, relaciones y DAOs
 viewmodel/    estado y validaciones de cada pantalla
 navigation/   rutas y navegación
-permisos/     solicitud del permiso de cámara
+permisos/     verificación de permisos y acceso a Ajustes del sistema
 ui/           tema, componentes y pantallas
-utils/        validación de RUT, fechas, imágenes y vibración
+utils/        validaciones, RUT, contraseñas, fechas, imágenes, vibración y notificaciones
 docs/         capturas de funcionamiento
 ```
 
@@ -119,3 +132,16 @@ docs/         capturas de funcionamiento
 ```
 ./gradlew testDebugUnitTest
 ```
+
+| Clase | Qué prueba |
+|---|---|
+| `ReglasNegocioTest` | Reglas de la fila, los probadores, el resumen y la estimación de espera |
+| `AccesoJefaturaTest` | Hash de contraseñas, código de recuperación y bloqueo por intentos |
+| `ConfiguracionSeccionTest` | Configuración inicial, mantenedor de probadores y validaciones de formulario |
+| `CuentasYRolesTest` | Cuentas de cliente, turno propio y permisos de cada rol |
+| `AlertasTest` | Alertas agrupadas de probadores libres |
+
+## Microservicios
+
+El backend del caso (Spring Boot, API REST y pruebas unitarias) está en un repositorio aparte:
+`ms-ProbadoresRinconSur`, con `probadores-service` y `turnos-service`.
