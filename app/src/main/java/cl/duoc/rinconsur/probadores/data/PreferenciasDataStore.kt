@@ -16,12 +16,13 @@ private val Context.preferencias by preferencesDataStore(name = "preferencias")
 //  ---------------------------------------------------------------------
 //  Aquí NO van datos del negocio (eso vive en Room, ver SeccionRepository):
 //  solo quién tiene la sesión abierta, el modo demostración y los accesos
-//  recientes que muestra la pantalla de ingreso.
+//  recientes que muestra la pantalla de ingreso y si se quieren notificaciones.
 // =====================================================================
 
 class PreferenciasDataStore(private val context: Context) {
     private val SESION_RUT = stringPreferencesKey("sesion_rut")
     private val MODO_DEMO = booleanPreferencesKey("modo_demo")
+    private val NOTIFICACIONES = booleanPreferencesKey("notificaciones")
     private val RECIENTES = stringPreferencesKey("accesos_recientes")
     private val MAX_RECIENTES = 4
 
@@ -41,6 +42,15 @@ class PreferenciasDataStore(private val context: Context) {
 
     suspend fun guardarModoDemo(valor: Boolean) {
         context.preferencias.edit { it[MODO_DEMO] = valor }
+    }
+
+    // ----------------------------- NOTIFICACIONES -----------------------------
+
+    // Activadas por defecto; el colaborador las puede apagar en Ajustes.
+    fun obtenerNotificaciones(): Flow<Boolean> = context.preferencias.data.map { it[NOTIFICACIONES] ?: true }
+
+    suspend fun guardarNotificaciones(valor: Boolean) {
+        context.preferencias.edit { it[NOTIFICACIONES] = valor }
     }
 
     // --------------------------- ACCESOS RECIENTES ---------------------------

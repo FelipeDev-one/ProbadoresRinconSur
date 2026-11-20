@@ -1,5 +1,6 @@
 package cl.duoc.rinconsur.probadores
 
+import cl.duoc.rinconsur.probadores.utils.Notificaciones
 import android.app.Application
 import cl.duoc.rinconsur.probadores.data.PreferenciasDataStore
 import cl.duoc.rinconsur.probadores.data.SeccionRepository
@@ -15,5 +16,6 @@ class ProbadoresApp : Application() {
     override fun onCreate() {
         super.onCreate()
         preferencias.borrarArchivoAntiguo()
+        Notificaciones.crearCanales(this)
     }
 }

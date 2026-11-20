@@ -4,6 +4,10 @@
 
     <!-- Cámara (HU-08): permiso PELIGROSO. Se DECLARA aquí y además se PIDE
          en tiempo de ejecución (ver permisos/Permisos.kt y FueraServicioScreen). -->
+    <!-- Notificaciones (Android 13+ lo pide en tiempo de ejecución): alertas urgentes al
+         personal y aviso de turno llamado al cliente. Ver utils/Notificaciones.kt -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <uses-permission android:name="android.permission.CAMERA" />
 
     <!-- Vibración para las alertas urgentes (RF-07). Es un permiso normal:
