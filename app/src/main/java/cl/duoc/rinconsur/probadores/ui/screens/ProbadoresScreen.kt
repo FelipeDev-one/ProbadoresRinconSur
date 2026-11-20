@@ -62,6 +62,8 @@ import cl.duoc.rinconsur.probadores.model.TipoProbador
 import cl.duoc.rinconsur.probadores.model.UsoSinFilaErrores
 import cl.duoc.rinconsur.probadores.navigation.Ruta
 import cl.duoc.rinconsur.probadores.ui.components.AlertaCard
+import cl.duoc.rinconsur.probadores.ui.components.FiltroChips
+import cl.duoc.rinconsur.probadores.ui.components.OpcionFiltro
 import cl.duoc.rinconsur.probadores.ui.components.CampoTexto
 import cl.duoc.rinconsur.probadores.ui.components.EstadoChip
 import cl.duoc.rinconsur.probadores.ui.components.FotoEvidencia
@@ -86,6 +88,8 @@ fun ProbadoresScreen(navController: NavController, viewModel: SeccionViewModel) 
     val panel by viewModel.panel.collectAsStateWithLifecycle()
     val sesion by viewModel.sesion.collectAsStateWithLifecycle()
     var seleccionado by rememberSaveable { mutableStateOf<String?>(null) }
+    // null = todos; si no, solo los probadores en ese estado.
+    var filtro by rememberSaveable { mutableStateOf<EstadoProbador?>(null) }
     // Los probadores los operan asistentes y jefatura; el vendedor solo consulta su estado.
     val opera = sesion?.perfil?.operaProbadores == true
 
@@ -136,7 +140,18 @@ fun ProbadoresScreen(navController: NavController, viewModel: SeccionViewModel) 
                 }
             }
 
-            items(p.probadores, key = { it.probador.codigo }) { vista ->
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                FiltroChips(
+                    opciones = listOf(OpcionFiltro<EstadoProbador?>(null, "Todos", p.probadores.size)) +
+                        EstadoProbador.entries.map { estado ->
+                            OpcionFiltro<EstadoProbador?>(estado, estado.etiqueta, p.probadores.count { it.probador.estado == estado })
+                        }.filter { (it.cantidad ?: 0) > 0 || it.valor == filtro },
+                    seleccionado = filtro,
+                    onSeleccion = { filtro = it }
+                )
+            }
+
+            items(p.probadores.filter { filtro == null || it.probador.estado == filtro }, key = { it.probador.codigo }) { vista ->
                 ProbadorCard(vista, onClick = {
                     if (opera) seleccionado = vista.probador.codigo
                     else viewModel.mostrarMensaje("Solo consulta: los probadores los opera el asistente o la jefatura")
