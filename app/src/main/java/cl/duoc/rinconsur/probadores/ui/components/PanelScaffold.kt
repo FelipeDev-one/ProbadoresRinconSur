@@ -1,5 +1,8 @@
 package cl.duoc.rinconsur.probadores.ui.components
 
+import cl.duoc.rinconsur.probadores.utils.Notificaciones
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -51,6 +54,9 @@ import cl.duoc.rinconsur.probadores.viewmodel.SeccionViewModel
 //  su scroll y estado siguen donde estaban.
 // =====================================================================
 
+// Para no volver a pedir el permiso cada vez que se cambia de pestaña.
+private var permisoPedido = false
+
 private data class Pestana(
     val ruta: Ruta,
     @StringRes val titulo: Int,
@@ -85,11 +91,24 @@ fun PanelScaffold(
     val urgentes = panel?.alertas?.count { it.urgente } ?: 0
     val enFila = panel?.personasEnFila ?: 0
 
-    // Vibra solo cuando AUMENTAN las alertas urgentes (no cada segundo).
+    val notificacionesActivas by viewModel.notificaciones.collectAsStateWithLifecycle()
+
+    // Permiso de notificaciones: se pide al entrar al panel, una vez por apertura de la app.
     val contexto = LocalContext.current
+    val pedirPermiso = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    LaunchedEffect(Unit) {
+        if (notificacionesActivas && Notificaciones.requierePermiso && !Notificaciones.tienePermiso(contexto) && !permisoPedido) {
+            permisoPedido = true
+            pedirPermiso.launch(Notificaciones.PERMISO)
+        }
+    }
+
+    // Vibra solo cuando AUMENTAN las alertas urgentes. La notificación la envía SeccionViewModel.
     var urgentesPrevias by remember { mutableIntStateOf(urgentes) }
     LaunchedEffect(urgentes) {
-        if (urgentes > urgentesPrevias) Vibracion.avisar(contexto)
+        if (urgentes > urgentesPrevias) {
+            Vibracion.avisar(contexto)
+        }
         urgentesPrevias = urgentes
     }
 

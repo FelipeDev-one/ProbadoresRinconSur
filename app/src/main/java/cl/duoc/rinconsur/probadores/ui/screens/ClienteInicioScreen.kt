@@ -1,5 +1,10 @@
 package cl.duoc.rinconsur.probadores.ui.screens
 
+import cl.duoc.rinconsur.probadores.utils.Notificaciones
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.LaunchedEffect
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -80,6 +85,18 @@ fun ClienteInicioScreen(viewModel: SeccionViewModel, onPerfil: () -> Unit) {
     val panel by viewModel.panel.collectAsStateWithLifecycle()
     val turno by viewModel.turnoCliente.collectAsStateWithLifecycle()
 
+    // El aviso de "turno llamado" lo envía SeccionViewModel, aunque la app esté en segundo plano.
+    val contexto = LocalContext.current
+    // El permiso se pide en el momento en que tiene sentido: al tomar el turno.
+    val pedirPermiso = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    val tomar: (String, Boolean) -> String? = { prendas, preferente ->
+        val error = viewModel.tomarTurnoCliente(prendas, preferente)
+        if (error == null && Notificaciones.requierePermiso && !Notificaciones.tienePermiso(contexto)) {
+            pedirPermiso.launch(Notificaciones.PERMISO)
+        }
+        error
+    }
+
     Scaffold(
         topBar = {
             BarraConVolver(
@@ -117,7 +134,7 @@ fun ClienteInicioScreen(viewModel: SeccionViewModel, onPerfil: () -> Unit) {
                     MiTurno(t, onRetirar = viewModel::retirarTurnoCliente)
                 } else {
                     EstadoSeccion(p)
-                    TomarTurno(p, onTomar = viewModel::tomarTurnoCliente)
+                    TomarTurno(p, onTomar = tomar)
                 }
             }
         }
@@ -172,7 +189,7 @@ private fun MiTurno(vista: TurnoClienteVista, onRetirar: (MotivoAbandono) -> Uni
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
     if (turno.estado != EstadoTurno.LLAMADO) Text(
-        "Esta pantalla se actualiza sola. Le avisaremos aquí cuando sea su turno.",
+        "Esta pantalla se actualiza sola. Cuando sea su turno le llegará una notificación.",
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )

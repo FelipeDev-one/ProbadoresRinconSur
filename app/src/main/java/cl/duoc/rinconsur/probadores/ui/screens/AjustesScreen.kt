@@ -1,5 +1,10 @@
 package cl.duoc.rinconsur.probadores.ui.screens
 
+import cl.duoc.rinconsur.probadores.utils.Notificaciones
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.remember
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
@@ -58,6 +63,13 @@ import cl.duoc.rinconsur.probadores.viewmodel.SeccionViewModel
 fun AjustesScreen(navController: NavController, viewModel: SeccionViewModel) {
     val sesion by viewModel.sesion.collectAsStateWithLifecycle()
     val modoDemo by viewModel.modoDemo.collectAsStateWithLifecycle()
+    val notificaciones by viewModel.notificaciones.collectAsStateWithLifecycle()
+    val contexto = LocalContext.current
+    var permisoConcedido by remember { mutableStateOf(Notificaciones.tienePermiso(contexto)) }
+    val pedirPermiso = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { concedido ->
+        permisoConcedido = concedido
+        if (!concedido) viewModel.mostrarMensaje("Sin permiso no llegarán notificaciones. Puede darlo en Ajustes del sistema.", true)
+    }
     var confirmarCierre by rememberSaveable { mutableStateOf(false) }
     var confirmarSalida by rememberSaveable { mutableStateOf(false) }
     val esJefatura = sesion?.perfil?.esJefatura == true
@@ -99,6 +111,31 @@ fun AjustesScreen(navController: NavController, viewModel: SeccionViewModel) {
             Card(Modifier.fillMaxWidth()) {
                 OpcionAjuste(Icons.Filled.Visibility, "Modo punto de espera", "Deja el equipo mostrando la espera a los clientes; salir pide su contraseña") {
                     navController.navigate(Ruta.Cliente.ruta)
+                }
+            }
+
+            Card(Modifier.fillMaxWidth()) {
+                Row(Modifier.padding(Dimens.espacioMedio), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Notificaciones de alertas", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            when {
+                                !notificaciones -> "Desactivadas"
+                                !permisoConcedido -> "Falta el permiso del sistema"
+                                else -> "Uso prolongado y probadores libres con fila"
+                            },
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                    Switch(
+                        checked = notificaciones && permisoConcedido,
+                        onCheckedChange = { activar ->
+                            viewModel.cambiarNotificaciones(activar)
+                            if (activar && !permisoConcedido) {
+                                if (Notificaciones.requierePermiso) pedirPermiso.launch(Notificaciones.PERMISO)
+                            }
+                        }
+                    )
                 }
             }
 

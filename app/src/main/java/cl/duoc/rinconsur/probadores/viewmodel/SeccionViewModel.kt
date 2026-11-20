@@ -1,5 +1,6 @@
 package cl.duoc.rinconsur.probadores.viewmodel
 
+import cl.duoc.rinconsur.probadores.utils.Notificaciones
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -113,6 +114,9 @@ class SeccionViewModel(application: Application) : AndroidViewModel(application)
     val modoDemo: StateFlow<Boolean> = preferencias.obtenerModoDemo()
         .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
+    val notificaciones: StateFlow<Boolean> = preferencias.obtenerNotificaciones()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, true)
+
     val sesion: StateFlow<Colaborador?> = arranque.map { it?.colaboradorConSesion() }
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
@@ -151,6 +155,36 @@ class SeccionViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             delay(1_200)
             presentacionLista.value = true
+        }
+    }
+
+    // Las notificaciones se deciden aquí (y no en una pantalla) para que lleguen
+    // aunque el usuario esté en otra pantalla o tenga la app en segundo plano.
+    private fun vigilarNotificaciones() {
+        val contexto = getApplication<Application>()
+        // Personal: avisa cada alerta urgente NUEVA (no repite las que ya estaban).
+        viewModelScope.launch {
+            var anteriores = emptySet<String>()
+            panel.collect { p ->
+                val urgentes = p?.alertas?.filter { it.urgente } ?: emptyList()
+                val titulos = urgentes.map { it.titulo }.toSet()
+                val nueva = urgentes.firstOrNull { it.titulo !in anteriores }
+                if (nueva != null && sesion.value != null && notificaciones.value) {
+                    Notificaciones.alertaUrgente(contexto, nueva.titulo, nueva.detalle)
+                }
+                anteriores = titulos
+            }
+        }
+        // Cliente: avisa cuando su turno pasa de "en espera" a "llamado".
+        viewModelScope.launch {
+            var estadoAnterior: EstadoTurno? = null
+            turnoCliente.collect { vista ->
+                val estado = vista?.turno?.estado
+                if (vista != null && estado == EstadoTurno.LLAMADO && estadoAnterior == EstadoTurno.EN_ESPERA) {
+                    Notificaciones.turnoLlamado(contexto, vista.turno.codigo)
+                }
+                estadoAnterior = estado
+            }
         }
     }
 
@@ -307,7 +341,7 @@ class SeccionViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             try {
                 val turno = repositorio.actualizar { s ->
-                    ReglasSeccion.tomarTurnoCliente(s, rut, prendas!!, preferente, System.currentTimeMillis(), modoDemo.value)
+                    ReglasSeccion.tomarTurnoCliente(s, rut, prendas, preferente, System.currentTimeMillis(), modoDemo.value)
                 }
                 mostrarMensaje("Turno ${turno.codigo} tomado")
             } catch (e: ReglaNegocioException) {
@@ -370,6 +404,10 @@ class SeccionViewModel(application: Application) : AndroidViewModel(application)
                 mostrarMensaje(e.message ?: "No se pudo cerrar la jornada.", true)
             }
         }
+    }
+
+    fun cambiarNotificaciones(valor: Boolean) {
+        viewModelScope.launch { preferencias.guardarNotificaciones(valor) }
     }
 
     fun cambiarModoDemo(valor: Boolean) {
@@ -435,6 +473,11 @@ class SeccionViewModel(application: Application) : AndroidViewModel(application)
 
     fun resumenPorFranja(fecha: String): List<Triple<Franja, Int, Int>> =
         seccion.value?.let { ResumenCalculator.porFranja(it.turnos, fecha) } ?: emptyList()
+
+    // Va al final: necesita que panel, sesion y turnoCliente ya estén creados.
+    init {
+        vigilarNotificaciones()
+    }
 }
 
 sealed class ConsultaTurno {
