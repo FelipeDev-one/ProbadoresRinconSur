@@ -1,5 +1,12 @@
 package cl.duoc.rinconsur.probadores.ui.screens
 
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.filled.Search
+import cl.duoc.rinconsur.probadores.ui.components.CampoTexto
+import cl.duoc.rinconsur.probadores.ui.components.OpcionFiltro
+import cl.duoc.rinconsur.probadores.ui.components.FiltroChips
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -74,6 +81,8 @@ fun FilaScreen(navController: NavController, viewModel: SeccionViewModel) {
     val opera = sesion?.perfil?.operaProbadores == true
     var asignarId by rememberSaveable { mutableStateOf<String?>(null) }
     var abandonoId by rememberSaveable { mutableStateOf<String?>(null) }
+    var filtro by rememberSaveable { mutableStateOf(FiltroFila.TODOS) }
+    var buscar by rememberSaveable { mutableStateOf("") }
 
     PanelScaffold(
         titulo = "Fila de espera",
@@ -116,8 +125,38 @@ fun FilaScreen(navController: NavController, viewModel: SeccionViewModel) {
             }
             if (p.fila.isEmpty()) {
                 item { FilaVacia() }
+            } else {
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FiltroChips(
+                            opciones = FiltroFila.entries.map { f -> OpcionFiltro(f, f.etiqueta, p.fila.count { f.incluye(it) }) },
+                            seleccionado = filtro,
+                            onSeleccion = { filtro = it }
+                        )
+                        CampoTexto(
+                            valor = buscar,
+                            onCambio = { buscar = it.filter(Char::isDigit).take(3) },
+                            etiqueta = "Buscar turno por número",
+                            icono = Icons.Filled.Search,
+                            error = null,
+                            placeholder = "Ej: 12",
+                            prefijo = "T-",
+                            opcionesTeclado = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Search)
+                        )
+                    }
+                }
             }
-            items(p.fila, key = { it.turno.id }) { vista ->
+            val visibles = p.fila.filter { filtro.incluye(it) && (buscar.isBlank() || it.turno.numero.toString().contains(buscar.trimStart('0').ifEmpty { "0" })) }
+            if (p.fila.isNotEmpty() && visibles.isEmpty()) {
+                item {
+                    Text(
+                        "Ningún turno coincide con el filtro.",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            items(visibles, key = { it.turno.id }) { vista ->
                 TurnoCard(
                     vista = vista,
                     minutosPresentarse = p.parametros.minutosPresentarse,
@@ -196,8 +235,8 @@ private fun TurnoCard(
                 if (llamado) EtiquetaLlamado()
             }
             Text(
-                "Ingresó ${Tiempo.hora(t.horaIngreso)} · espera ${Tiempo.duracion(vista.minutosEsperando)} · " +
-                    "${t.prendas} prenda(s) · estimado ${Tiempo.estimado(vista.estimado)}",
+                "Espera ${Tiempo.duracion(vista.minutosEsperando)} · ${t.prendas} prenda(s)" +
+                    if (t.clienteRut != null) " · desde la app" else "",
                 style = MaterialTheme.typography.bodyMedium
             )
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -293,4 +332,19 @@ private fun AbandonoDialog(vista: TurnoVista, onConfirmar: (MotivoAbandono) -> U
         confirmButton = { Button(onClick = { onConfirmar(motivo) }) { Text("Registrar abandono") } },
         dismissButton = { TextButton(onClick = onCerrar) { Text("Cancelar") } }
     )
+}
+
+// Filtros de la fila: todos, solo preferentes, solo llamados o solo los que aún esperan.
+private enum class FiltroFila(val etiqueta: String) {
+    TODOS("Todos"),
+    EN_ESPERA("En espera"),
+    LLAMADOS("Llamados"),
+    PREFERENTES("Preferentes");
+
+    fun incluye(vista: TurnoVista): Boolean = when (this) {
+        TODOS -> true
+        EN_ESPERA -> vista.turno.estado == EstadoTurno.EN_ESPERA
+        LLAMADOS -> vista.turno.estado == EstadoTurno.LLAMADO
+        PREFERENTES -> vista.turno.preferente
+    }
 }
