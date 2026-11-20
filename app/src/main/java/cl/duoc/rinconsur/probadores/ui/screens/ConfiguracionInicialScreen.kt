@@ -69,14 +69,18 @@ import cl.duoc.rinconsur.probadores.viewmodel.PasoConfiguracion
 // =====================================================================
 
 @Composable
-fun ConfiguracionInicialScreen(viewModel: ConfiguracionViewModel = viewModel()) {
+fun ConfiguracionInicialScreen(
+    onVolver: (() -> Unit)? = null,
+    viewModel: ConfiguracionViewModel = viewModel()
+) {
     val estado by viewModel.estado.collectAsStateWithLifecycle()
 
     val volver: (() -> Unit)? = when (estado.paso) {
+        PasoConfiguracion.JEFATURA -> onVolver
         PasoConfiguracion.PROBADORES -> viewModel::volverAJefatura
         else -> null
     }
-    BackHandler(enabled = estado.paso != PasoConfiguracion.JEFATURA) { volver?.invoke() }
+    BackHandler(enabled = estado.paso != PasoConfiguracion.JEFATURA || onVolver != null) { volver?.invoke() }
 
     Scaffold(
         topBar = { BarraConVolver("Configuración inicial", onVolver = volver) }
