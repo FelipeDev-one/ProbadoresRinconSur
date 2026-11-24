@@ -160,28 +160,16 @@ class PerfilViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             _clave.update { it.copy(guardando = true) }
             val rut = preferencias.obtenerSesion().first()
-            val credencial = rut?.let { repositorio.obtenerCredencial(it) }
-            if (rut == null || credencial == null) {
+            if (rut == null) {
                 _clave.update { it.copy(guardando = false, errorActual = "Su sesión terminó. Ingrese nuevamente.") }
                 return@launch
             }
-            val ahora = System.currentTimeMillis()
-            val segundos = ReglasAcceso.segundosBloqueo(credencial, ahora)
-            if (segundos > 0) {
-                _clave.update {
-                    it.copy(guardando = false, errorActual = "Demasiados intentos. Espere $segundos segundos.")
-                }
-                return@launch
+            try {
+                val codigo = repositorio.cuentas().cambiarContrasena(rut, e.actual, e.nueva)
+                _clave.value = ClaveUiState(codigoGenerado = codigo)
+            } catch (ex: ReglaNegocioException) {
+                _clave.update { it.copy(guardando = false, actual = "", errorActual = ex.message) }
             }
-            val correcta = withContext(Dispatchers.Default) { ReglasAcceso.contrasenaCorrecta(credencial, e.actual) }
-            if (!correcta) {
-                repositorio.guardarCredencial(ReglasAcceso.registrarFallo(credencial, ahora))
-                _clave.update { it.copy(guardando = false, actual = "", errorActual = "La contraseña actual no es correcta") }
-                return@launch
-            }
-            val (nueva, codigo) = withContext(Dispatchers.Default) { ReglasAcceso.crear(rut, e.nueva) }
-            repositorio.guardarCredencial(nueva)
-            _clave.value = ClaveUiState(codigoGenerado = codigo)
         }
     }
 }

@@ -1,5 +1,6 @@
 package cl.duoc.rinconsur.probadores.viewmodel
 
+import cl.duoc.rinconsur.probadores.data.remote.EstadoConexion
 import cl.duoc.rinconsur.probadores.utils.Notificaciones
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
@@ -127,9 +128,11 @@ class SeccionViewModel(application: Application) : AndroidViewModel(application)
     private val presentacionLista = MutableStateFlow(false)
 
     // CARGANDO → SIN_CONFIGURAR (app vacía: falta crear la jefatura y los probadores) o LISTA.
-    val estadoApp: StateFlow<EstadoApp> = combine(arranque, presentacionLista) { a, lista ->
+    val estadoApp: StateFlow<EstadoApp> = combine(
+        arranque, presentacionLista, repositorio.primeraSincronizacion
+    ) { a, lista, sincronizado ->
         when {
-            a == null || !lista -> EstadoApp.CARGANDO
+            a == null || !lista || !sincronizado -> EstadoApp.CARGANDO
             !ReglasSeccion.estaConfigurada(a.seccion) -> EstadoApp.SIN_CONFIGURAR
             else -> EstadoApp.LISTA
         }
@@ -369,9 +372,10 @@ class SeccionViewModel(application: Application) : AndroidViewModel(application)
     fun verificarClaveDeSesion(clave: String, resultado: (Boolean) -> Unit) {
         val rut = sesion.value?.rut ?: sesionCliente.value?.rut
         viewModelScope.launch {
-            val credencial = rut?.let { repositorio.obtenerCredencial(it) }
-            val correcta = credencial != null && withContext(Dispatchers.Default) {
-                ReglasAcceso.contrasenaCorrecta(credencial, clave)
+            val correcta = rut != null && try {
+                repositorio.cuentas().verificar(rut, clave)
+            } catch (e: ReglaNegocioException) {
+                false
             }
             resultado(correcta)
         }
@@ -421,6 +425,28 @@ class SeccionViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch { preferencias.guardarSesion(null) }
     }
 
+    // ------------------------------- SERVIDOR -------------------------------
+
+    val estadoConexion: StateFlow<EstadoConexion> = repositorio.estadoConexion
+
+    // Trae lo que hicieron los otros equipos (clientes, vendedores, asistentes) cada 5 segundos.
+    private fun sincronizarSiempre() {
+        viewModelScope.launch {
+            while (true) {
+                sincronizarAhora()
+                delay(5_000)
+            }
+        }
+    }
+
+    private suspend fun sincronizarAhora() {
+        try {
+            repositorio.sincronizar()
+        } catch (e: ReglaNegocioException) {
+            // Sin conexión: se siguen mostrando los últimos datos (Room); el estado lo indica.
+        }
+    }
+
     // RUT de las jefaturas que ya crearon su contraseña.
     val rutsConContrasena: StateFlow<Set<String>> = repositorio.obtenerRutsConContrasena()
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
@@ -437,8 +463,13 @@ class SeccionViewModel(application: Application) : AndroidViewModel(application)
             return
         }
         viewModelScope.launch {
-            repositorio.eliminarCredencial(colaborador.rut)
-            mostrarMensaje("Contraseña de ${colaborador.nombreCorto} restablecida")
+            try {
+                repositorio.cuentas().restablecer(colaborador.rut)
+                repositorio.sincronizar()
+                mostrarMensaje("Contraseña de ${colaborador.nombreCorto} restablecida")
+            } catch (e: ReglaNegocioException) {
+                mostrarMensaje(e.message ?: "No se pudo restablecer la contraseña.", true)
+            }
         }
     }
 
@@ -477,6 +508,7 @@ class SeccionViewModel(application: Application) : AndroidViewModel(application)
     // Va al final: necesita que panel, sesion y turnoCliente ya estén creados.
     init {
         vigilarNotificaciones()
+        sincronizarSiempre()
     }
 }
 

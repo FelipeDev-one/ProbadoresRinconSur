@@ -1,5 +1,6 @@
 package cl.duoc.rinconsur.probadores.viewmodel
 
+import cl.duoc.rinconsur.probadores.model.SinContrasenaException
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -142,7 +143,13 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _estado.update { it.copy(cargando = true) }
             val rut = RutValidator.normalizar(actual.rut)
-            val cuenta = repositorio.obtenerSeccion().first()?.cuenta(rut)
+            val encontrada = try {
+                repositorio.cuentas().buscar(rut)
+            } catch (ex: ReglaNegocioException) {
+                _estado.update { it.copy(cargando = false, errores = LoginErrores(rut = ex.message)) }
+                return@launch
+            }
+            val cuenta = encontrada?.cuenta
             val error = when {
                 cuenta == null && actual.modoColaborador ->
                     "Este RUT no está registrado como colaborador. Consulte con la jefatura."
@@ -155,19 +162,18 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                 !cuenta.activa -> "Colaborador inactivo: consulte con la jefatura (RN-13)"
                 else -> null
             }
-            if (error != null || cuenta == null) {
+            if (error != null || encontrada == null) {
                 _estado.update { it.copy(cargando = false, errores = LoginErrores(rut = error)) }
                 return@launch
             }
-            perfilActual = cuenta.perfil
-            val tieneContrasena = repositorio.obtenerCredencial(rut) != null
+            perfilActual = encontrada.cuenta.perfil
             _estado.update {
                 it.copy(
                     cargando = false,
-                    nombre = cuenta.nombre,
-                    rol = cuenta.rol,
+                    nombre = encontrada.cuenta.nombre,
+                    rol = encontrada.cuenta.rol,
                     paso = when {
-                        !tieneContrasena -> PasoLogin.CREAR_CONTRASENA
+                        !encontrada.tieneContrasena -> PasoLogin.CREAR_CONTRASENA
                         recuperar -> PasoLogin.RECUPERAR
                         else -> PasoLogin.CONTRASENA
                     },
@@ -178,6 +184,8 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // ------------------------------ CONTRASEÑA ------------------------------
+    // Las contraseñas las valida el servidor (usuarios-service) o, sin servidor, el teléfono:
+    // ver data/cuentas/ServicioCuentas.kt.
 
     fun ingresarConContrasena(onExito: (Perfil?) -> Unit) {
         val actual = _estado.value
@@ -189,17 +197,15 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _estado.update { it.copy(cargando = true) }
             val rut = RutValidator.normalizar(actual.rut)
-            val credencial = repositorio.obtenerCredencial(rut)
-            if (credencial == null) {
+            try {
+                repositorio.cuentas().iniciarSesion(rut, actual.contrasena)
+                finalizar(rut, onExito)
+            } catch (ex: SinContrasenaException) {
                 // La jefatura la restableció mientras tanto: se pide crear una nueva.
                 _estado.update { it.copy(cargando = false, paso = PasoLogin.CREAR_CONTRASENA, contrasena = "") }
-                return@launch
+            } catch (ex: ReglaNegocioException) {
+                _estado.update { it.copy(cargando = false, contrasena = "", errores = LoginErrores(contrasena = ex.message)) }
             }
-            val error = verificarConBloqueo(credencial, "Contraseña incorrecta") {
-                ReglasAcceso.contrasenaCorrecta(it, actual.contrasena)
-            }
-            if (error == null) finalizar(rut, onExito)
-            else _estado.update { it.copy(cargando = false, contrasena = "", errores = LoginErrores(contrasena = error)) }
         }
     }
 
@@ -210,12 +216,11 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _estado.update { it.copy(cargando = true) }
             val rut = RutValidator.normalizar(actual.rut)
-            // Si ya existe (p. ej. se creó desde otro intento), no se pisa: se pide ingresar.
-            if (repositorio.obtenerCredencial(rut) != null) {
-                _estado.update { it.copy(cargando = false, paso = PasoLogin.CONTRASENA, contrasena = "", confirmacion = "") }
-                return@launch
+            try {
+                mostrarCodigo(repositorio.cuentas().crearContrasena(rut, actual.contrasena))
+            } catch (ex: ReglaNegocioException) {
+                _estado.update { it.copy(cargando = false, errores = LoginErrores(contrasena = ex.message)) }
             }
-            guardarNueva(rut, actual.contrasena)
         }
     }
 
@@ -233,16 +238,13 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _estado.update { it.copy(cargando = true) }
             val rut = RutValidator.normalizar(actual.rut)
-            val credencial = repositorio.obtenerCredencial(rut)
-            if (credencial == null) {
+            try {
+                mostrarCodigo(repositorio.cuentas().recuperar(rut, actual.codigo, actual.contrasena))
+            } catch (ex: SinContrasenaException) {
                 _estado.update { it.copy(cargando = false, paso = PasoLogin.CREAR_CONTRASENA, codigo = "") }
-                return@launch
+            } catch (ex: ReglaNegocioException) {
+                _estado.update { it.copy(cargando = false, errores = LoginErrores(codigo = ex.message)) }
             }
-            val error = verificarConBloqueo(credencial, "Código incorrecto") {
-                ReglasAcceso.codigoCorrecto(it, actual.codigo)
-            }
-            if (error == null) guardarNueva(rut, actual.contrasena)
-            else _estado.update { it.copy(cargando = false, errores = LoginErrores(codigo = error)) }
         }
     }
 
@@ -267,10 +269,10 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
             val rut = RutValidator.normalizar(actual.rut)
             val cliente = Cliente(rut, Validaciones.limpiarNombre(actual.nombre), System.currentTimeMillis())
             try {
-                repositorio.actualizar { s -> ReglasSeccion.registrarCliente(s, cliente) to Unit }
+                val codigo = repositorio.cuentas().registrarCliente(cliente, actual.contrasena)
                 perfilActual = null
                 _estado.update { it.copy(nombre = cliente.nombre, rol = "Cliente") }
-                guardarNueva(rut, actual.contrasena)
+                mostrarCodigo(codigo)
             } catch (ex: ReglaNegocioException) {
                 _estado.update { it.copy(cargando = false, errores = LoginErrores(rut = ex.message)) }
             }
@@ -290,34 +292,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
         return error == null && errorConfirmacion == null
     }
 
-    // Revisa bloqueo, verifica (el hash es lento: va fuera del hilo principal) y guarda el resultado.
-    private suspend fun verificarConBloqueo(
-        credencial: Credencial,
-        textoError: String,
-        verificar: (Credencial) -> Boolean
-    ): String? {
-        val ahora = System.currentTimeMillis()
-        val segundos = ReglasAcceso.segundosBloqueo(credencial, ahora)
-        if (segundos > 0) return "Demasiados intentos. Espere $segundos segundos e intente de nuevo."
-
-        val correcto = withContext(Dispatchers.Default) { verificar(credencial) }
-        if (correcto) {
-            repositorio.guardarCredencial(ReglasAcceso.registrarExito(credencial))
-            return null
-        }
-        val actualizada = ReglasAcceso.registrarFallo(credencial, ahora)
-        repositorio.guardarCredencial(actualizada)
-        return if (actualizada.bloqueadaHasta > ahora) {
-            "Demasiados intentos. Espere ${ReglasAcceso.MILIS_BLOQUEO / 1000} segundos e intente de nuevo."
-        } else {
-            val quedan = ReglasAcceso.intentosRestantes(actualizada)
-            "$textoError. Le queda${if (quedan == 1) "" else "n"} $quedan intento${if (quedan == 1) "" else "s"}."
-        }
-    }
-
-    private suspend fun guardarNueva(rut: String, contrasena: String) {
-        val (credencial, codigo) = withContext(Dispatchers.Default) { ReglasAcceso.crear(rut, contrasena) }
-        repositorio.guardarCredencial(credencial)
+    private fun mostrarCodigo(codigo: String) {
         _estado.update {
             it.copy(
                 cargando = false,
@@ -332,6 +307,12 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private suspend fun finalizar(rut: String, onExito: (Perfil?) -> Unit) {
+        // Trae la cuenta recién creada (o creada en otro equipo) antes de abrir su vista.
+        try {
+            repositorio.sincronizar()
+        } catch (ex: ReglaNegocioException) {
+            // Sin conexión: se entra con los datos que ya tenía el teléfono.
+        }
         preferencias.guardarSesion(rut)
         preferencias.agregarReciente(rut)
         _estado.value = LoginUiState()

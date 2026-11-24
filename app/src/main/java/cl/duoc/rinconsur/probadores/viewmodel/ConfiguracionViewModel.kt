@@ -65,8 +65,9 @@ class ConfiguracionViewModel(application: Application) : AndroidViewModel(applic
     private val _estado = MutableStateFlow(ConfiguracionUiState())
     val estado: StateFlow<ConfiguracionUiState> = _estado
 
-    // Se arma en el paso 2 y se guarda recién al confirmar el código.
-    private var credencialPendiente: Credencial? = null
+    // La cuenta de jefatura (con su contraseña) se crea al pasar al código;
+    // la sección completa se guarda recién al confirmarlo.
+    private var jefaturaPendiente: Colaborador? = null
 
     // ------------------------------- CAMPOS -------------------------------
 
@@ -150,11 +151,21 @@ class ConfiguracionViewModel(application: Application) : AndroidViewModel(applic
         }
         viewModelScope.launch {
             _estado.update { it.copy(guardando = true, errores = ConfiguracionErrores()) }
-            val rut = RutValidator.normalizar(e.rut)
-            val (credencial, codigo) = withContext(Dispatchers.Default) { ReglasAcceso.crear(rut, e.contrasena) }
-            credencialPendiente = credencial
-            _estado.update {
-                it.copy(guardando = false, paso = PasoConfiguracion.CODIGO, codigoGenerado = codigo)
+            val turno = e.turno ?: return@launch
+            val jefatura = Colaborador(
+                rut = RutValidator.normalizar(e.rut),
+                nombre = Validaciones.limpiarNombre(e.nombre),
+                perfil = Perfil.JEFATURA,
+                turno = turno
+            )
+            try {
+                val codigo = repositorio.cuentas().configuracionInicial(jefatura, e.contrasena)
+                jefaturaPendiente = jefatura
+                _estado.update {
+                    it.copy(guardando = false, paso = PasoConfiguracion.CODIGO, codigoGenerado = codigo)
+                }
+            } catch (ex: ReglaNegocioException) {
+                _estado.update { it.copy(guardando = false, errores = ConfiguracionErrores(general = ex.message)) }
             }
         }
     }
@@ -162,17 +173,10 @@ class ConfiguracionViewModel(application: Application) : AndroidViewModel(applic
     // Guarda todo de una vez. La sesión va primero para que la app abra directo en el panel.
     fun finalizar() {
         val e = _estado.value
-        val credencial = credencialPendiente ?: return
-        val turno = e.turno ?: return
+        val jefatura = jefaturaPendiente ?: return
         if (e.guardando) return
         viewModelScope.launch {
             _estado.update { it.copy(guardando = true) }
-            val jefatura = Colaborador(
-                rut = credencial.rut,
-                nombre = Validaciones.limpiarNombre(e.nombre),
-                perfil = Perfil.JEFATURA,
-                turno = turno
-            )
             try {
                 preferencias.guardarSesion(jefatura.rut)
                 repositorio.actualizar { s ->
@@ -180,7 +184,6 @@ class ConfiguracionViewModel(application: Application) : AndroidViewModel(applic
                         s, jefatura, e.estandar.toInt(), e.accesibles.toIntOrNull() ?: 0, System.currentTimeMillis()
                     ) to Unit
                 }
-                repositorio.guardarCredencial(credencial)
                 preferencias.agregarReciente(jefatura.rut)
             } catch (ex: ReglaNegocioException) {
                 preferencias.guardarSesion(null)
