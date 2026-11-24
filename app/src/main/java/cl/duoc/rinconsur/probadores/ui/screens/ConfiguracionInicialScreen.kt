@@ -1,5 +1,6 @@
 package cl.duoc.rinconsur.probadores.ui.screens
 
+import cl.duoc.rinconsur.probadores.ui.components.BotonServidor
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
@@ -90,6 +91,7 @@ fun ConfiguracionInicialScreen(viewModel: ConfiguracionViewModel = viewModel()) 
                 progress = { (estado.paso.ordinal + 1) / 3f },
                 modifier = Modifier.fillMaxWidth()
             )
+            BotonServidor(Modifier.align(Alignment.CenterHorizontally))
             Box(
                 Modifier
                     .fillMaxSize()

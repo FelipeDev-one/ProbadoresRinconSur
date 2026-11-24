@@ -1,5 +1,6 @@
 package cl.duoc.rinconsur.probadores.ui.screens
 
+import cl.duoc.rinconsur.probadores.ui.components.BotonServidor
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
@@ -210,6 +211,7 @@ private fun PasoRut(
         Spacer(Modifier.width(ButtonDefaults.IconSpacing))
         Text("¿Trabaja en la tienda? Ingreso de colaboradores")
     }
+    BotonServidor()
 }
 
 // Ingreso del personal: asistentes, vendedores(as) y jefatura. Sus cuentas las crea la jefatura.

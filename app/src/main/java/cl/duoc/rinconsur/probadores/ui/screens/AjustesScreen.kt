@@ -1,5 +1,9 @@
 package cl.duoc.rinconsur.probadores.ui.screens
 
+import cl.duoc.rinconsur.probadores.ui.components.DialogoServidor
+import cl.duoc.rinconsur.probadores.ui.components.iconoConexion
+import cl.duoc.rinconsur.probadores.viewmodel.ServidorViewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
 import cl.duoc.rinconsur.probadores.utils.Notificaciones
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.remember
@@ -64,6 +68,9 @@ fun AjustesScreen(navController: NavController, viewModel: SeccionViewModel) {
     val sesion by viewModel.sesion.collectAsStateWithLifecycle()
     val modoDemo by viewModel.modoDemo.collectAsStateWithLifecycle()
     val notificaciones by viewModel.notificaciones.collectAsStateWithLifecycle()
+    val servidorViewModel: ServidorViewModel = viewModel()
+    val conexion by servidorViewModel.estadoConexion.collectAsStateWithLifecycle()
+    val urlServidor by servidorViewModel.urlActual.collectAsStateWithLifecycle()
     val contexto = LocalContext.current
     var permisoConcedido by remember { mutableStateOf(Notificaciones.tienePermiso(contexto)) }
     val pedirPermiso = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { concedido ->
@@ -107,6 +114,17 @@ fun AjustesScreen(navController: NavController, viewModel: SeccionViewModel) {
                     }
                 }
             }
+
+            Card(Modifier.fillMaxWidth()) {
+                OpcionAjuste(
+                    iconoConexion(conexion),
+                    "Servidor",
+                    if (urlServidor.isBlank()) conexion.etiqueta else "${conexion.etiqueta}\n$urlServidor"
+                ) {
+                    servidorViewModel.abrir()
+                }
+            }
+            DialogoServidor(servidorViewModel)
 
             Card(Modifier.fillMaxWidth()) {
                 OpcionAjuste(Icons.Filled.Visibility, "Modo punto de espera", "Deja el equipo mostrando la espera a los clientes; salir pide su contraseña") {
