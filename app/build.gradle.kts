@@ -58,7 +58,12 @@ dependencies {
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
 
+    // Retrofit: cliente HTTP hacia el API Gateway de los microservicios (JSON con Gson).
+    implementation(libs.retrofit)
+    implementation(libs.retrofit.gson)
+
     debugImplementation(libs.androidx.ui.tooling)
 
     testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
 }

@@ -8,6 +8,9 @@
          personal y aviso de turno llamado al cliente. Ver utils/Notificaciones.kt -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Internet (permiso normal): la app se conecta al API Gateway de los microservicios. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <uses-permission android:name="android.permission.CAMERA" />
 
     <!-- Vibración para las alertas urgentes (RF-07). Es un permiso normal:
@@ -22,6 +25,8 @@
         android:name="android.hardware.camera"
         android:required="false" />
 
+    <!-- usesCleartextTraffic: permite http:// para el servidor local (10.0.2.2 en el emulador).
+         La URL pública de VS Code ya es https. -->
     <!-- allowBackup="false": los RUT y nombres de colaboradores no salen del equipo (RNF-06). -->
     <application
         android:name=".ProbadoresApp"
@@ -33,6 +38,7 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.ProbadoresRinconSur"
+        android:usesCleartextTraffic="true"
         tools:targetApi="31">
 
         <activity
