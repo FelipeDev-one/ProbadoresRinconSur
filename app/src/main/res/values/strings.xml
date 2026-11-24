@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Probadores Rincón Sur</string>
+    <!-- Nombre definitivo con el que se instala la app (bajo el ícono del teléfono). -->
+    <string name="app_name">Probadores RS</string>
 
     <!-- Inicio -->
     <string name="marca">Rincón Sur</string>
