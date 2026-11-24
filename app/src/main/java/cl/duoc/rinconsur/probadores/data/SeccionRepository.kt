@@ -1,31 +1,54 @@
 package cl.duoc.rinconsur.probadores.data
 
 import androidx.room.withTransaction
+import cl.duoc.rinconsur.probadores.data.cuentas.CuentasLocales
+import cl.duoc.rinconsur.probadores.data.cuentas.CuentasRemotas
+import cl.duoc.rinconsur.probadores.data.cuentas.ServicioCuentas
 import cl.duoc.rinconsur.probadores.data.local.ProbadoresDatabase
 import cl.duoc.rinconsur.probadores.data.local.aEntidad
+import cl.duoc.rinconsur.probadores.data.remote.ConexionServidor
+import cl.duoc.rinconsur.probadores.data.remote.DescargaRemota
+import cl.duoc.rinconsur.probadores.data.remote.EnviadorRemoto
+import cl.duoc.rinconsur.probadores.data.remote.EstadoConexion
+import cl.duoc.rinconsur.probadores.data.remote.PlanSincronizacion
 import cl.duoc.rinconsur.probadores.model.Colaborador
 import cl.duoc.rinconsur.probadores.model.Credencial
 import cl.duoc.rinconsur.probadores.model.Parametros
 import cl.duoc.rinconsur.probadores.model.Seccion
+import cl.duoc.rinconsur.probadores.model.SinConexionException
 import cl.duoc.rinconsur.probadores.model.Turno
 import cl.duoc.rinconsur.probadores.model.Uso
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 // =====================================================================
-//  SeccionRepository — la única puerta entre los ViewModels y la base de datos
+//  SeccionRepository — la única puerta entre los ViewModels y los datos
 //  ---------------------------------------------------------------------
-//  Los ViewModels no conocen Room ni los DAOs: piden y guardan una "Seccion"
-//  (el modelo completo). El repositorio la arma leyendo las tablas y, al
-//  guardar, escribe solo las filas que cambiaron.
+//  Los ViewModels piden y guardan una "Seccion" (el modelo completo) y no
+//  saben de dónde viene. Con servidor configurado, los microservicios son la
+//  fuente de verdad y Room es la copia local (caché) que lee la pantalla:
 //
-//     ViewModel ──▶ SeccionRepository ──▶ DAOs ──▶ SQLite (Room)
+//     ViewModel ──▶ SeccionRepository ──▶ Retrofit ──▶ API Gateway ──▶ microservicios
+//                          │
+//                          └──▶ DAOs ──▶ SQLite (Room, caché)
 //
-//  actualizar() lee, aplica la regla de negocio y guarda dentro de UNA
-//  transacción: si la regla lanza un error, no se guarda nada.
+//  actualizar(): aplica la regla de negocio, ENVÍA los cambios al servidor y,
+//  solo si el servidor los aceptó, los guarda en Room. Si algo falla, no se guarda nada.
+//  sincronizar(): DESCARGA el estado del servidor y lo deja en Room (lo llama
+//  SeccionViewModel cada pocos segundos, para ver lo que hacen otros equipos).
+//  Sin servidor (dirección vacía en Ajustes) todo queda solo en Room, como antes.
 // =====================================================================
 
-class SeccionRepository(private val db: ProbadoresDatabase) {
+class SeccionRepository(
+    private val db: ProbadoresDatabase,
+    private val conexion: ConexionServidor
+) {
     private val colaboradores = db.colaboradorDao()
     private val clientes = db.clienteDao()
     private val probadores = db.probadorDao()
@@ -35,22 +58,84 @@ class SeccionRepository(private val db: ProbadoresDatabase) {
     private val parametros = db.parametrosDao()
     private val credenciales = db.credencialDao()
 
+    // Una sola escritura a la vez (acción del usuario o sincronización).
+    private val candado = Mutex()
+
+    private val _estadoConexion = MutableStateFlow(EstadoConexion.CONECTANDO)
+    val estadoConexion: StateFlow<EstadoConexion> = _estadoConexion
+
+    // false hasta el primer intento de sincronizar: evita mostrar el asistente de
+    // configuración mientras todavía no se sabe si el servidor ya tiene datos.
+    private val _primeraSincronizacion = MutableStateFlow(false)
+    val primeraSincronizacion: StateFlow<Boolean> = _primeraSincronizacion
+
+    private val rutsConContrasenaRemotos = MutableStateFlow<Set<String>>(emptySet())
+
+    val urlServidor: Flow<String> = conexion.url
+
     // Vuelve a emitir cada vez que cambia cualquiera de las tablas de la sección.
     // Emite null mientras la sección aún no tiene datos.
     fun obtenerSeccion(): Flow<Seccion?> =
         db.invalidationTracker.createFlow(*ProbadoresDatabase.TABLAS).map { db.withTransaction { leer() } }
 
-    suspend fun <T> actualizar(operacion: (Seccion) -> Pair<Seccion, T>): T =
-        db.withTransaction {
-            val actual = leer() ?: Seccion()
-            val (nueva, valor) = operacion(actual)
-            guardarCambios(actual, nueva)
-            valor
+    suspend fun <T> actualizar(operacion: (Seccion) -> Pair<Seccion, T>): T = candado.withLock {
+        val api = conexion.api()
+        if (api == null) {
+            return@withLock db.withTransaction {
+                val actual = leer() ?: Seccion()
+                val (nueva, valor) = operacion(actual)
+                guardarCambios(actual, nueva)
+                valor
+            }
         }
+        val actual = db.withTransaction { leer() } ?: Seccion()
+        val (nueva, valor) = operacion(actual)
+        try {
+            EnviadorRemoto(api).enviar(PlanSincronizacion.operaciones(actual, nueva))
+        } catch (e: SinConexionException) {
+            _estadoConexion.value = EstadoConexion.SIN_CONEXION
+            throw e
+        }
+        _estadoConexion.value = EstadoConexion.CONECTADO
+        db.withTransaction { guardarCambios(actual, nueva) }
+        valor
+    }
+
+    // Descarga todo desde los microservicios y actualiza la copia local.
+    // Devuelve false si no hay servidor configurado. Lanza SinConexionException si no responde.
+    suspend fun sincronizar(): Boolean = candado.withLock {
+        val api = conexion.api()
+        if (api == null) {
+            _estadoConexion.value = EstadoConexion.SIN_SERVIDOR
+            _primeraSincronizacion.value = true
+            return@withLock false
+        }
+        try {
+            val creados = clientes.todos().associate { it.rut to it.aModelo().creado }
+            val remoto = DescargaRemota(api).descargar(creados)
+            db.withTransaction { guardarCambios(leer() ?: Seccion(), remoto.seccion) }
+            rutsConContrasenaRemotos.value = remoto.rutsConContrasena
+            _estadoConexion.value = EstadoConexion.CONECTADO
+            true
+        } catch (e: SinConexionException) {
+            _estadoConexion.value = EstadoConexion.SIN_CONEXION
+            throw e
+        } finally {
+            _primeraSincronizacion.value = true
+        }
+    }
+
+    // Ingreso y contraseñas: en el servidor si hay uno configurado; si no, en el teléfono.
+    suspend fun cuentas(): ServicioCuentas =
+        conexion.api()?.let { CuentasRemotas(it.usuarios) } ?: CuentasLocales(this)
 
     // ----------------------------- CREDENCIALES -----------------------------
+    // (solo se usan sin servidor; con servidor las contraseñas viven en usuarios-service)
 
-    fun obtenerRutsConContrasena(): Flow<Set<String>> = credenciales.observarRuts().map { it.toSet() }
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun obtenerRutsConContrasena(): Flow<Set<String>> = conexion.url.flatMapLatest { url ->
+        if (url.isBlank()) credenciales.observarRuts().map { it.toSet() } else rutsConContrasenaRemotos
+    }
 
     suspend fun obtenerCredencial(rut: String): Credencial? = credenciales.obtener(rut)?.aModelo()
 

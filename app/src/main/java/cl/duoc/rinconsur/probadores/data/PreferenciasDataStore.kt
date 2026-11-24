@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import cl.duoc.rinconsur.probadores.data.remote.RetrofitClient
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import java.io.File
@@ -16,7 +17,8 @@ private val Context.preferencias by preferencesDataStore(name = "preferencias")
 //  ---------------------------------------------------------------------
 //  Aquí NO van datos del negocio (eso vive en Room, ver SeccionRepository):
 //  solo quién tiene la sesión abierta, el modo demostración y los accesos
-//  recientes que muestra la pantalla de ingreso y si se quieren notificaciones.
+//  recientes que muestra la pantalla de ingreso, si se quieren notificaciones
+//  y la dirección del servidor.
 // =====================================================================
 
 class PreferenciasDataStore(private val context: Context) {
@@ -24,6 +26,7 @@ class PreferenciasDataStore(private val context: Context) {
     private val MODO_DEMO = booleanPreferencesKey("modo_demo")
     private val NOTIFICACIONES = booleanPreferencesKey("notificaciones")
     private val RECIENTES = stringPreferencesKey("accesos_recientes")
+    private val SERVIDOR = stringPreferencesKey("servidor_url")
     private val MAX_RECIENTES = 4
 
     // ------------------------------- SESIÓN -------------------------------
@@ -51,6 +54,16 @@ class PreferenciasDataStore(private val context: Context) {
 
     suspend fun guardarNotificaciones(valor: Boolean) {
         context.preferencias.edit { it[NOTIFICACIONES] = valor }
+    }
+
+    // ------------------------------- SERVIDOR -------------------------------
+
+    // Dirección del API Gateway. Vacía = la app trabaja sin servidor (solo con Room).
+    // Por defecto, el computador visto desde el emulador.
+    fun obtenerUrlServidor(): Flow<String> = context.preferencias.data.map { it[SERVIDOR] ?: RetrofitClient.URL_EMULADOR }
+
+    suspend fun guardarUrlServidor(url: String) {
+        context.preferencias.edit { it[SERVIDOR] = RetrofitClient.normalizarUrl(url) }
     }
 
     // --------------------------- ACCESOS RECIENTES ---------------------------
