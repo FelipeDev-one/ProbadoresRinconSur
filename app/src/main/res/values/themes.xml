@@ -2,4 +2,12 @@
 <resources>
     <!-- Tema de la ventana. Los colores reales los pone Compose en ui/theme/Theme.kt -->
     <style name="Theme.ProbadoresRinconSur" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <!-- Splash Screen (androidx.core:core-splashscreen): fondo petróleo con el logo.
+         Al terminar, MainActivity pasa al tema normal (postSplashScreenTheme). -->
+    <style name="Theme.ProbadoresRinconSur.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/ic_launcher_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_icono</item>
+        <item name="postSplashScreenTheme">@style/Theme.ProbadoresRinconSur</item>
+    </style>
 </resources>

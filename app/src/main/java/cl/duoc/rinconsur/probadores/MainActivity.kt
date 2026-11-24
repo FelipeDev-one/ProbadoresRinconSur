@@ -4,6 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import cl.duoc.rinconsur.probadores.navigation.AppNavegacion
 import cl.duoc.rinconsur.probadores.ui.theme.ProbadoresRinconSurTheme
 
@@ -11,6 +12,8 @@ import cl.duoc.rinconsur.probadores.ui.theme.ProbadoresRinconSurTheme
 // que cambian dentro de AppNavegacion (navigation/AppNavegacion.kt).
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Splash Screen: debe instalarse antes de super.onCreate (tema Theme.ProbadoresRinconSur.Splash).
+        installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
