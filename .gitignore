@@ -12,7 +12,7 @@
 *.aab
 .kotlin/
 
-# Firma de la app: nunca al repositorio
+# Firma de la app: la llave (.jks) y el APK firmado SÍ van al repositorio (lo pide la pauta),
+# en keystore/ y distribucion/. Las contraseñas NO: quedan en keystore.properties.
 keystore.properties
-*.jks
-*.keystore
+!distribucion/*.apk
