@@ -103,6 +103,7 @@ import cl.duoc.rinconsur.probadores.viewmodel.LoginViewModel
 @Composable
 fun LoginScreen(
     onIngreso: (Perfil?) -> Unit,
+    onColaboradores: (() -> Unit)? = null,
     viewModel: LoginViewModel = viewModel()
 ) {
     val estado by viewModel.estado.collectAsStateWithLifecycle()
@@ -150,7 +151,7 @@ fun LoginScreen(
                     verticalArrangement = Arrangement.spacedBy(Dimens.espacioMedio)
                 ) {
                     when (paso) {
-                        PasoLogin.RUT -> PasoRut(estado, recientes.filter { it.esCliente }, viewModel)
+                        PasoLogin.RUT -> PasoRut(estado, recientes.filter { it.esCliente }, viewModel, onColaboradores)
                         PasoLogin.COLABORADOR -> PasoColaborador(estado, recientes.filter { !it.esCliente }, viewModel)
                         PasoLogin.CONTRASENA -> PasoContrasena(estado, viewModel, onIngreso)
                         PasoLogin.CREAR_CONTRASENA -> PasoCrear(estado, viewModel)
@@ -171,7 +172,8 @@ fun LoginScreen(
 private fun PasoRut(
     estado: LoginUiState,
     recientes: List<Cuenta>,
-    viewModel: LoginViewModel
+    viewModel: LoginViewModel,
+    onColaboradores: (() -> Unit)? = null
 ) {
     Icon(Icons.Filled.Checkroom, contentDescription = null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary)
     Text(stringResource(R.string.marca), style = MaterialTheme.typography.headlineMedium)
@@ -206,7 +208,7 @@ private fun PasoRut(
     }
 
     HorizontalDivider()
-    TextButton(onClick = viewModel::irAColaboradores, enabled = !estado.cargando) {
+    TextButton(onClick = onColaboradores ?: viewModel::irAColaboradores, enabled = !estado.cargando) {
         Icon(Icons.Filled.Badge, contentDescription = null)
         Spacer(Modifier.width(ButtonDefaults.IconSpacing))
         Text("¿Trabaja en la tienda? Ingreso de colaboradores")
