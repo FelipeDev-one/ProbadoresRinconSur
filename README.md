@@ -95,6 +95,7 @@ La dirección del API Gateway se cambia con el botón **Servidor** (pantalla de 
 | Dónde corre la app | Dirección |
 |---|---|
 | Emulador | `http://10.0.2.2:8080/` (por defecto). Si no conecta: `adb reverse tcp:8080 tcp:8080` y usar `http://127.0.0.1:8080/` |
+| Teléfono por USB | `adb reverse tcp:8080 tcp:8080` y usar `http://127.0.0.1:8080/` |
 | Teléfono | La URL pública de VS Code (Puertos → reenviar 8080 → visibilidad pública), por ejemplo `https://abc123-8080.brs.devtunnels.ms/` |
 | Sin servidor | Dejar la dirección vacía: todo queda solo en el teléfono (Room) |
 
@@ -132,6 +133,12 @@ Tomadas en un dispositivo físico.
 |---|---|---|---|
 | ![Fuera de servicio](docs/Formulario_FDS.png) | ![Cámara](docs/Camara.png) | ![Probador con evidencia](docs/Probador_FDS.png) | ![Resumen](docs/Resumen.png) |
 
+Conectada a los microservicios (Samsung Galaxy A14, APK firmado 1.0.0): la cuenta del cliente y su turno quedan en MySQL, y el llamado llega en vivo desde el servidor.
+
+| Cliente conectado | Turno tomado | Turno llamado |
+|---|---|---|
+| ![Cliente conectado](docs/Cliente_Servidor.png) | ![Turno tomado](docs/Cliente_Turno.png) | ![Turno llamado](docs/Cliente_Llamado.png) |
+
 ## Estructura
 
 ```
@@ -148,20 +155,32 @@ utils/        validaciones, RUT, contraseñas, fechas, imágenes, vibración y n
 docs/         capturas de funcionamiento
 ```
 
+## Distribución
+
+La versión `release` se firma con un keystore propio. Las claves no están en el repositorio:
+
+1. Crear el keystore: `keytool -genkeypair -v -keystore keystore/probadores-rs.jks -alias probadores-rs -keyalg RSA -keysize 2048 -validity 10000`
+2. Copiar `keystore.properties.example` como `keystore.properties` y completar las contraseñas (archivo ignorado por git).
+3. Generar: `./gradlew assembleRelease bundleRelease`
+   - APK: `app/build/outputs/apk/release/app-release.apk`
+   - AAB: `app/build/outputs/bundle/release/app-release.aab`
+
+La app se instala como **Probadores RS** (versión 1.0.0), con ícono propio y Splash Screen.
+
 ## Pruebas
 
 ```
 ./gradlew testDebugUnitTest
 ```
 
-| Clase | Qué prueba |
-|---|---|
-| `ReglasNegocioTest` | Reglas de la fila, los probadores, el resumen y la estimación de espera |
-| `AccesoJefaturaTest` | Hash de contraseñas, código de recuperación y bloqueo por intentos |
-| `ConfiguracionSeccionTest` | Configuración inicial, mantenedor de probadores y validaciones de formulario |
-| `CuentasYRolesTest` | Cuentas de cliente, turno propio y permisos de cada rol |
-| `AlertasTest` | Alertas agrupadas de probadores libres |
-| `IntegracionServidorTest` | Sincronización, cuentas y errores contra APIs simuladas (FakeApi, sin servidor real) |
+64 pruebas unitarias de lógica en 4 archivos (`app/src/test`), todas en verde. No hay pruebas de interfaz ni instrumentadas.
+
+| Clase | Pruebas | Qué prueba |
+|---|---|---|
+| `ReglasNegocioTest` | 20 | Reglas de la fila, los probadores, el resumen, la estimación de espera y las alertas agrupadas |
+| `CuentasYRolesTest` | 19 | Cuentas de cliente, turno propio, permisos de cada rol, hash de contraseñas, código de recuperación y bloqueo por intentos |
+| `ConfiguracionSeccionTest` | 10 | Configuración inicial, mantenedor de probadores y validaciones de formulario |
+| `IntegracionServidorTest` | 15 | Sincronización, cuentas y errores contra APIs simuladas (FakeApi, sin servidor real) |
 
 ## Microservicios
 
