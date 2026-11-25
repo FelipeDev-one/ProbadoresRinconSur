@@ -9,12 +9,15 @@ import cl.duoc.rinconsur.probadores.model.EstimadorEspera
 import cl.duoc.rinconsur.probadores.model.FRANJAS
 import cl.duoc.rinconsur.probadores.model.GeneradorAlertas
 import cl.duoc.rinconsur.probadores.model.MotivoAbandono
+import cl.duoc.rinconsur.probadores.model.Nombres
+import cl.duoc.rinconsur.probadores.model.Parametros
 import cl.duoc.rinconsur.probadores.model.Perfil
 import cl.duoc.rinconsur.probadores.model.ReglaNegocioException
 import cl.duoc.rinconsur.probadores.model.ReglasSeccion
 import cl.duoc.rinconsur.probadores.model.ResumenCalculator
 import cl.duoc.rinconsur.probadores.model.Seccion
 import cl.duoc.rinconsur.probadores.model.TurnoLaboral
+import cl.duoc.rinconsur.probadores.model.Uso
 import cl.duoc.rinconsur.probadores.utils.RutValidator
 import cl.duoc.rinconsur.probadores.utils.Tiempo
 import org.junit.Assert.assertEquals
@@ -217,5 +220,143 @@ class ReglasNegocioTest {
         val fila = ReglasSeccion.filaDelDia(s, Tiempo.fechaIso(ahoraAlertas))
         val alerta = GeneradorAlertas.generar(s, fila, ahoraAlertas + 5 * 60_000).filterIsInstance<Alerta.ProbadoresSinAsignar>().single()
         assertEquals("P-03 libre sin asignar", alerta.titulo)
+    }
+
+    // ------------------------------ ALERTAS, ESPERA Y FORMATOS ------------------------------
+
+    private val ahoraExtra = Tiempo.millis(2026, 11, 25, 12, 0)
+    private val jefaExtra = Colaborador("12984561-9", "Patricia Morales", Perfil.JEFATURA, TurnoLaboral.MANANA)
+
+    private fun seccionExtra(): Seccion = ReglasSeccion.configurarInicial(Seccion(), jefaExtra, 2, 0, ahoraExtra)
+
+    @Test
+    fun `un uso largo genera alerta y con fila pide ofrecer ayuda`() {
+        var s = ReglasSeccion.asignarProbador(seccionExtra(), "P-01", null, 1, jefaExtra.rut, ahoraExtra)
+        val sinFila = GeneradorAlertas.generar(s, emptyList(), ahoraExtra + 20 * 60_000)
+        val prolongado = sinFila.filterIsInstance<Alerta.UsoProlongado>().single()
+        assertEquals("P-01: uso prolongado", prolongado.titulo)
+        assertFalse(prolongado.urgente)
+
+        s = ReglasSeccion.registrarTurno(s, 1, false, jefaExtra.rut, ahoraExtra, false).first
+        val fila = ReglasSeccion.filaDelDia(s, Tiempo.fechaIso(ahoraExtra))
+        val ayuda = GeneradorAlertas.generar(s, fila, ahoraExtra + 30 * 60_000).filterIsInstance<Alerta.UsoProlongado>().single()
+        assertEquals("P-01: ofrecer ayuda", ayuda.titulo)
+        assertTrue(ayuda.urgente)
+    }
+
+    @Test
+    fun `un turno llamado que no se presenta genera alerta`() {
+        val (conTurno, turno) = ReglasSeccion.registrarTurno(seccionExtra(), 1, false, jefaExtra.rut, ahoraExtra, false)
+        val s = ReglasSeccion.llamarTurno(conTurno, turno.id, jefaExtra.rut, ahoraExtra)
+        val fila = ReglasSeccion.filaDelDia(s, Tiempo.fechaIso(ahoraExtra))
+        val alerta = GeneradorAlertas.generar(s, fila, ahoraExtra + 3 * 60_000)
+            .filterIsInstance<Alerta.TurnoSinPresentarse>().single()
+        assertEquals("T-001 no se presenta", alerta.titulo)
+    }
+
+    @Test
+    fun `cerca del cierre de la fila se avisa`() {
+        val p = Parametros()
+        val minutoLimite = p.horaCierre * 60 - p.minutosCierreFila
+        val antes = Tiempo.millis(2026, 11, 25, (minutoLimite - 10) / 60, (minutoLimite - 10) % 60)
+        val alerta = GeneradorAlertas.generar(seccionExtra(), emptyList(), antes)
+            .filterIsInstance<Alerta.CierreFilaProximo>().single()
+        assertEquals("Cierre de la fila en 10 min", alerta.titulo)
+    }
+
+    @Test
+    fun `la espera usa el promedio del dia cuando hay suficientes usos`() {
+        val usos = (1..10).map { Uso("u$it", "P-01", null, 0L, 12 * 60_000L, 1, 1, "x", "x") }
+        assertEquals(12.0, EstimadorEspera.promedioUso(usos, 8), 0.001)
+        assertEquals(8.0, EstimadorEspera.promedioUso(usos.take(3), 8), 0.001)
+        assertNull(EstimadorEspera.minutos(2, 0, 8.0, 1))
+        // Con probadores libres y nadie antes, no hay espera.
+        assertEquals(0, EstimadorEspera.enSeccion(seccionExtra(), 0, ahoraExtra))
+        // Todos ocupados: 2 personas antes y 2 probadores, con 8 + 1 min por uso.
+        var s = ReglasSeccion.asignarProbador(seccionExtra(), "P-01", null, 1, jefaExtra.rut, ahoraExtra)
+        s = ReglasSeccion.asignarProbador(s, "P-02", null, 1, jefaExtra.rut, ahoraExtra)
+        assertEquals(14, EstimadorEspera.enSeccion(s, 2, ahoraExtra))
+    }
+
+    @Test
+    fun `el resumen por franja cuenta turnos y abandonos`() {
+        val (s1, t1) = ReglasSeccion.registrarTurno(seccionExtra(), 1, false, jefaExtra.rut, ahoraExtra, false)
+        val s2 = ReglasSeccion.registrarAbandono(s1, t1.id, MotivoAbandono.ESPERA_LARGA, jefaExtra.rut, ahoraExtra + 60_000)
+        val franjas = ResumenCalculator.porFranja(s2.turnos, Tiempo.fechaIso(ahoraExtra))
+        assertEquals(FRANJAS.size - 1, franjas.size)
+        val mediodia = franjas.single { it.first.etiqueta == "12–14" }
+        assertEquals(1, mediodia.second)
+        assertEquals(1, mediodia.third)
+    }
+
+    @Test
+    fun `nombres cortos, primer nombre e iniciales`() {
+        assertEquals("P. Morales", Nombres.corto("Patricia Andrea Morales Soto"))
+        assertEquals("C. Fuentes", Nombres.corto("Camila Fuentes"))
+        assertEquals("Camila", Nombres.corto("Camila"))
+        assertEquals("Patricia", Nombres.primero("  Patricia Morales "))
+        assertEquals("PM", Nombres.iniciales("Patricia Andrea Morales Soto"))
+        assertEquals("CF", Nombres.iniciales("Camila Fuentes"))
+        assertEquals("C", Nombres.iniciales("Camila"))
+        assertEquals("P. Morales", jefaExtra.nombreCorto)
+        assertEquals("PM", jefaExtra.iniciales)
+        assertEquals("Patricia", jefaExtra.primerNombre)
+    }
+
+    @Test
+    fun `textos de tiempo y RUT con formato`() {
+        assertEquals("—", Tiempo.estimado(null))
+        assertEquals("sin espera", Tiempo.estimado(0))
+        assertEquals("~7 min", Tiempo.estimado(7))
+        assertEquals("45 min", Tiempo.duracion(45))
+        assertEquals("1 h 05 min", Tiempo.duracion(65))
+        assertEquals("12:00", Tiempo.hora(ahoraExtra))
+        assertTrue(Tiempo.fechaLegible("2026-11-25").contains("25"))
+        assertEquals("12.984.561-9", RutValidator.formatear("129845619"))
+    }
+
+    @Test
+    fun `transiciones invalidas de turnos y probadores se rechazan`() {
+        val (conTurno, turno) = ReglasSeccion.registrarTurno(seccionExtra(), 1, false, jefaExtra.rut, ahoraExtra, false)
+        val llamado = ReglasSeccion.llamarTurno(conTurno, turno.id, jefaExtra.rut, ahoraExtra)
+        assertThrows(ReglaNegocioException::class.java) { ReglasSeccion.llamarTurno(llamado, turno.id, jefaExtra.rut, ahoraExtra) }
+        assertThrows(ReglaNegocioException::class.java) {
+            ReglasSeccion.registrarAbandono(conTurno, turno.id, MotivoAbandono.OTRO, jefaExtra.rut, ahoraExtra, noSePresento = true)
+        }
+        val cerrado = ReglasSeccion.registrarAbandono(conTurno, turno.id, MotivoAbandono.OTRO, jefaExtra.rut, ahoraExtra)
+        assertThrows(ReglaNegocioException::class.java) {
+            ReglasSeccion.registrarAbandono(cerrado, turno.id, MotivoAbandono.OTRO, jefaExtra.rut, ahoraExtra)
+        }
+        val s = seccionExtra()
+        assertThrows(ReglaNegocioException::class.java) { ReglasSeccion.terminarUso(s, "P-01", 1, jefaExtra.rut, ahoraExtra) }
+        assertThrows(ReglaNegocioException::class.java) { ReglasSeccion.finalizarOrdenamiento(s, "P-01", jefaExtra.rut, ahoraExtra) }
+        assertThrows(ReglaNegocioException::class.java) { ReglasSeccion.colaboradorActivo(s, "11111111-1") }
+        val ocupado = ReglasSeccion.asignarProbador(s, "P-01", null, 1, jefaExtra.rut, ahoraExtra)
+        assertThrows(ReglaNegocioException::class.java) {
+            ReglasSeccion.marcarFueraDeServicio(ocupado, "P-01", "Espejo roto", null, jefaExtra.rut, ahoraExtra)
+        }
+        assertThrows(ReglaNegocioException::class.java) { ReglasSeccion.eliminarProbador(ocupado, "P-01", jefaExtra.rut) }
+    }
+
+    @Test
+    fun `un probador fuera de servicio se vuelve a habilitar`() {
+        val fuera = ReglasSeccion.marcarFueraDeServicio(seccionExtra(), "P-02", "Cortina rota", null, jefaExtra.rut, ahoraExtra)
+        assertThrows(ReglaNegocioException::class.java) {
+            ReglasSeccion.marcarFueraDeServicio(fuera, "P-02", "Otra vez", null, jefaExtra.rut, ahoraExtra)
+        }
+        val habilitado = ReglasSeccion.habilitar(fuera, "P-02", jefaExtra.rut, ahoraExtra + 60_000)
+        val p = habilitado.probadores.single { it.codigo == "P-02" }
+        assertEquals(EstadoProbador.LIBRE, p.estado)
+        assertNull(p.motivoFueraServicio)
+        assertEquals("Habilitado nuevamente", habilitado.cambios.last().motivo)
+    }
+
+    @Test
+    fun `la jefatura guarda parametros y no puede desactivarse`() {
+        val s = ReglasSeccion.guardarParametros(seccionExtra(), Parametros(maxPrendas = 4), jefaExtra.rut)
+        assertEquals(4, s.parametros.maxPrendas)
+        assertThrows(ReglaNegocioException::class.java) {
+            ReglasSeccion.guardarColaborador(s, jefaExtra.copy(activo = false), jefaExtra.rut, esNuevo = false)
+        }
     }
 }

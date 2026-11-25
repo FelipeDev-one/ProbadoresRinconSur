@@ -4,6 +4,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
+    jacoco
 }
 
 android {
@@ -14,8 +15,8 @@ android {
         applicationId = "cl.duoc.rinconsur.probadores"
         minSdk = 26
         targetSdk = 37
-        versionCode = 3
-        versionName = "1.0.0"
+        versionCode = 4
+        versionName = "1.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -37,6 +38,11 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Cobertura de las pruebas unitarias con JaCoCo:
+            // ./gradlew createDebugUnitTestCoverageReport
+            enableUnitTestCoverage = true
+        }
         release {
             signingConfigs.findByName("distribucion")?.let { signingConfig = it }
             // Sin ofuscar: Retrofit y Gson leen los DTO por reflexión.
@@ -88,4 +94,69 @@ dependencies {
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+}
+
+// =====================================================================
+//  Cobertura de la LÓGICA con JaCoCo (pauta: 80 % o más)
+//  ./gradlew coberturaLogica  → app/build/reports/jacoco/coberturaLogica/html/index.html
+//  ./gradlew verificarCobertura  → falla si la cobertura de líneas baja de 80 %
+//
+//  Lógica = reglas de negocio (model), utilidades, repositorios remotos (Retrofit:
+//  microservicios y API externa), cuentas remotas y el ViewModel de la API externa.
+//  No se cuentan: pantallas Compose, navegación, tema, estados de formulario,
+//  entidades/DAOs de Room (código generado) ni clases que solo envuelven APIs de
+//  Android (notificaciones, vibración, imágenes).
+// =====================================================================
+val clasesDeLogica = fileTree(layout.buildDirectory.dir("intermediates/built_in_kotlinc/debug/compileDebugKotlin/classes")) {
+    include(
+        "cl/duoc/rinconsur/probadores/model/**",
+        "cl/duoc/rinconsur/probadores/utils/**",
+        "cl/duoc/rinconsur/probadores/data/remote/**",
+        "cl/duoc/rinconsur/probadores/data/externa/**",
+        "cl/duoc/rinconsur/probadores/data/cuentas/CuentasRemotas*",
+        "cl/duoc/rinconsur/probadores/viewmodel/Clima*"
+    )
+    exclude(
+        "cl/duoc/rinconsur/probadores/model/FormularioEstados*",
+        "cl/duoc/rinconsur/probadores/model/LoginUiState*",
+        "cl/duoc/rinconsur/probadores/model/LoginErrores*",
+        "cl/duoc/rinconsur/probadores/model/*UiState*",
+        "cl/duoc/rinconsur/probadores/model/*Errores*",
+        "cl/duoc/rinconsur/probadores/model/PasoLogin*",
+        "cl/duoc/rinconsur/probadores/model/MotivoPreferente*",
+        "cl/duoc/rinconsur/probadores/utils/Notificaciones*",
+        "cl/duoc/rinconsur/probadores/utils/Vibracion*",
+        "cl/duoc/rinconsur/probadores/utils/ImagenUtils*"
+    )
+}
+val datosDeCobertura = layout.buildDirectory.file("outputs/unit_test_code_coverage/debugUnitTest/testDebugUnitTest.exec")
+
+tasks.register<JacocoReport>("coberturaLogica") {
+    group = "verification"
+    description = "Reporte de cobertura de la lógica de la app (pruebas unitarias)."
+    dependsOn("testDebugUnitTest")
+    classDirectories.setFrom(clasesDeLogica)
+    sourceDirectories.setFrom("src/main/java")
+    executionData.setFrom(datosDeCobertura)
+    reports {
+        html.required.set(true)
+        xml.required.set(true)
+    }
+}
+
+tasks.register<JacocoCoverageVerification>("verificarCobertura") {
+    group = "verification"
+    description = "Falla si la cobertura de líneas de la lógica es menor a 80 %."
+    dependsOn("coberturaLogica")
+    classDirectories.setFrom(clasesDeLogica)
+    sourceDirectories.setFrom("src/main/java")
+    executionData.setFrom(datosDeCobertura)
+    violationRules {
+        rule {
+            limit {
+                counter = "LINE"
+                minimum = "0.80".toBigDecimal()
+            }
+        }
+    }
 }

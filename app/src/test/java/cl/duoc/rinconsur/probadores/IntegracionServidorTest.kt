@@ -1,11 +1,16 @@
 package cl.duoc.rinconsur.probadores
 
 import cl.duoc.rinconsur.probadores.data.cuentas.CuentasRemotas
+import cl.duoc.rinconsur.probadores.data.externa.ClimaActualDto
+import cl.duoc.rinconsur.probadores.data.externa.ClimaApi
+import cl.duoc.rinconsur.probadores.data.externa.ClimaRepository
+import cl.duoc.rinconsur.probadores.data.externa.PronosticoDto
 import cl.duoc.rinconsur.probadores.data.remote.ActualizarUsuarioDto
 import cl.duoc.rinconsur.probadores.data.remote.ApiServidor
 import cl.duoc.rinconsur.probadores.data.remote.CambiarContrasenaDto
 import cl.duoc.rinconsur.probadores.data.remote.CambioEstadoDto
 import cl.duoc.rinconsur.probadores.data.remote.ColaboradorNuevoDto
+import cl.duoc.rinconsur.probadores.data.remote.ConexionServidor
 import cl.duoc.rinconsur.probadores.data.remote.ConfiguracionInicialDto
 import cl.duoc.rinconsur.probadores.data.remote.ContrasenaDto
 import cl.duoc.rinconsur.probadores.data.remote.CuentaDto
@@ -29,6 +34,7 @@ import cl.duoc.rinconsur.probadores.data.remote.UsuarioDto
 import cl.duoc.rinconsur.probadores.data.remote.aDto
 import cl.duoc.rinconsur.probadores.data.remote.aModelo
 import cl.duoc.rinconsur.probadores.data.remote.mensajeDeError
+import cl.duoc.rinconsur.probadores.model.CambioEstado
 import cl.duoc.rinconsur.probadores.model.Cliente
 import cl.duoc.rinconsur.probadores.model.Colaborador
 import cl.duoc.rinconsur.probadores.model.ErrorServidorException
@@ -44,7 +50,17 @@ import cl.duoc.rinconsur.probadores.model.SinContrasenaException
 import cl.duoc.rinconsur.probadores.model.TipoProbador
 import cl.duoc.rinconsur.probadores.model.Turno
 import cl.duoc.rinconsur.probadores.model.TurnoLaboral
+import cl.duoc.rinconsur.probadores.model.Uso
+import cl.duoc.rinconsur.probadores.viewmodel.ClimaUiState
+import cl.duoc.rinconsur.probadores.viewmodel.ClimaViewModel
+import java.io.IOException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.setMain
 import okhttp3.MediaType
 import okhttp3.ResponseBody
 import org.junit.Assert.assertEquals
@@ -55,7 +71,6 @@ import org.junit.Assert.fail
 import org.junit.Test
 import retrofit2.HttpException
 import retrofit2.Response
-import java.io.IOException
 
 // =====================================================================
 //  Pruebas de la integración con los microservicios, SIN servidor real:
@@ -372,5 +387,131 @@ class IntegracionServidorTest {
         )
         assertEquals(cerrado, cerrado.aDto().aModelo())
         assertEquals(Parametros(maxPrendas = 7), Parametros(maxPrendas = 7).aDto().aModelo())
+    }
+
+    // ----------------------------------------------------------- MÁS OPERACIONES Y CONEXIÓN
+
+    @Test
+    fun elEnviadorCubreTodasLasOperaciones() = runTest {
+        val cliente = Cliente("19234587-1", "Ana Soto", 1L)
+        usuariosApi.usuarios[jefa.rut] = UsuarioDto(1, jefa.rut, jefa.nombre, "JEFATURA", "MANANA", true, true)
+        usuariosApi.usuarios[cliente.rut] = UsuarioDto(2, cliente.rut, cliente.nombre, "CLIENTE")
+        val uso = Uso("u1", "P-01", "t1", 5L, 9L, 2, 2, jefa.rut, jefa.rut, conAtraso = true)
+        val cambio = CambioEstado("P-01", EstadoProbador.LIBRE, EstadoProbador.OCUPADO, 5L, jefa.rut, null)
+        EnviadorRemoto(api).enviar(
+            listOf(
+                OperacionRemota.ActualizarColaborador(jefa.copy(nombre = "Patricia E. Morales")),
+                OperacionRemota.ActualizarCliente(cliente.copy(nombre = "Ana María Soto")),
+                OperacionRemota.GuardarUso(uso),
+                OperacionRemota.RegistrarCambio(cambio),
+                OperacionRemota.GuardarParametros(Parametros(maxPrendas = 5)),
+                OperacionRemota.EliminarProbador("P-02")
+            )
+        )
+        assertEquals("Patricia E. Morales", usuariosApi.usuarios.getValue(jefa.rut).nombre)
+        assertEquals("Ana María Soto", usuariosApi.usuarios.getValue(cliente.rut).nombre)
+        assertEquals(uso, probadoresApi.usos.single().aModelo())
+        assertEquals(cambio, probadoresApi.cambios.single().aModelo())
+        assertEquals(5, turnosApi.parametros.maxPrendas)
+        assertTrue("eliminar P-02" in probadoresApi.llamadas)
+    }
+
+    @Test
+    fun laConexionSoloCreaRetrofitCuandoCambiaLaDireccion() = runTest {
+        val url = kotlinx.coroutines.flow.MutableStateFlow("")
+        val conexion = ConexionServidor(url)
+        assertNull(conexion.api())
+
+        url.value = "http://127.0.0.1:8080/"
+        val primera = conexion.api()
+        assertTrue(primera === conexion.api())
+
+        url.value = "https://abc-8080.brs.devtunnels.ms/"
+        assertFalse(primera === conexion.api())
+    }
+
+    @Test
+    fun retrofitCreaLasTresApisDelGateway() {
+        val apis = RetrofitClient.crear("10.0.2.2:8080")
+        assertTrue(apis.usuarios is UsuarioApi)
+        assertTrue(apis.probadores is ProbadorApi)
+        assertTrue(apis.turnos is TurnoApi)
+    }
+
+    // ----------------------------------------------------------- API EXTERNA (CLIMA)
+
+    private class FakeClimaApi(
+        var respuesta: PronosticoDto? = null,
+        var falla: Exception? = null
+    ) : ClimaApi {
+        var consultas = 0
+        override suspend fun actual(latitud: Double, longitud: Double, campos: String, zona: String): PronosticoDto {
+            consultas++
+            falla?.let { throw it }
+            return respuesta!!
+        }
+    }
+
+    private val climaSoleado = PronosticoDto(ClimaActualDto("2026-11-25T12:00", 24.6, 26.2, 0))
+
+    @Test
+    fun elRepositorioDeClimaConvierteLaRespuesta() = runTest {
+        val clima = ClimaRepository(FakeClimaApi(climaSoleado)).climaTienda().getOrThrow()
+        assertEquals(25, clima.temperatura)
+        assertEquals(26, clima.sensacion)
+        assertEquals("Despejado", clima.descripcion)
+        assertEquals("12:00", clima.hora)
+        assertTrue(clima.sugerencia.startsWith("Día agradable"))
+    }
+
+    @Test
+    fun elClimaSinDatosOSinRedEsUnError() = runTest {
+        val vacio = ClimaRepository(FakeClimaApi(PronosticoDto(null))).climaTienda()
+        assertEquals("El servicio de clima no envió datos", vacio.exceptionOrNull()?.message)
+
+        val sinRed = ClimaRepository(FakeClimaApi(falla = IOException("sin red"))).climaTienda()
+        assertEquals("Sin conexión con el servicio de clima", sinRed.exceptionOrNull()?.message)
+
+        val caido = ClimaRepository(FakeClimaApi(falla = errorHttp(503, "caido"))).climaTienda()
+        assertEquals("El servicio de clima respondió con error 503", caido.exceptionOrNull()?.message)
+    }
+
+    @Test
+    fun losCodigosDelClimaYLasSugerencias() {
+        assertEquals("Parcialmente nublado", ClimaRepository.describir(2))
+        assertEquals("Nublado", ClimaRepository.describir(3))
+        assertEquals("Niebla", ClimaRepository.describir(45))
+        assertEquals("Llovizna", ClimaRepository.describir(53))
+        assertEquals("Lluvia", ClimaRepository.describir(63))
+        assertEquals("Lluvia", ClimaRepository.describir(81))
+        assertEquals("Nieve", ClimaRepository.describir(73))
+        assertEquals("Tormenta", ClimaRepository.describir(95))
+        assertEquals("Sin información", ClimaRepository.describir(4))
+        assertTrue(ClimaRepository.sugerir(5).startsWith("Día frío"))
+        assertTrue(ClimaRepository.sugerir(15).startsWith("Día templado"))
+        assertTrue(ClimaRepository.sugerir(30).startsWith("Día caluroso"))
+        // Sin sensación térmica se usa la temperatura.
+        assertEquals(10, ClimaRepository.convertir(ClimaActualDto(null, 10.2, null, 3)).sensacion)
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun elViewModelDelClimaPasaDeCargandoAListoOError() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        try {
+            val api = FakeClimaApi(climaSoleado)
+            val vm = ClimaViewModel(ClimaRepository(api))
+            assertEquals(ClimaUiState.Cargando, vm.estado.value)
+            advanceUntilIdle()
+            assertEquals("Despejado", (vm.estado.value as ClimaUiState.Listo).clima.descripcion)
+
+            api.falla = IOException("sin red")
+            vm.actualizar()
+            advanceUntilIdle()
+            assertEquals(ClimaUiState.Error("Sin conexión con el servicio de clima"), vm.estado.value)
+            assertEquals(2, api.consultas)
+        } finally {
+            Dispatchers.resetMain()
+        }
     }
 }
