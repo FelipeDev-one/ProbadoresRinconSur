@@ -1,5 +1,6 @@
 package cl.duoc.rinconsur.probadores.ui.screens
 
+import cl.duoc.rinconsur.probadores.ui.components.ClimaCard
 import cl.duoc.rinconsur.probadores.utils.Notificaciones
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.LaunchedEffect
@@ -129,6 +130,7 @@ fun ClienteInicioScreen(viewModel: SeccionViewModel, onPerfil: () -> Unit) {
                 Modifier.widthIn(max = Dimens.anchoMaximoFormulario),
                 verticalArrangement = Arrangement.spacedBy(Dimens.espacioMedio)
             ) {
+                ClimaCard()
                 val t = turno
                 if (t != null) {
                     MiTurno(t, onRetirar = viewModel::retirarTurnoCliente)

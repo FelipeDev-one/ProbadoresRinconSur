@@ -1,5 +1,6 @@
 package cl.duoc.rinconsur.probadores.ui.screens
 
+import cl.duoc.rinconsur.probadores.ui.components.ClimaCard
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -72,6 +73,9 @@ fun ResumenScreen(navController: NavController, viewModel: SeccionViewModel) {
                 .fillMaxSize()
                 .padding(padding)
         ) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                ClimaCard()
+            }
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Column(verticalArrangement = Arrangement.spacedBy(Dimens.espacioChico)) {
                     Text("Día", style = MaterialTheme.typography.titleMedium)
