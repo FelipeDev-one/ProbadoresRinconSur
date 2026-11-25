@@ -11,3 +11,8 @@
 *.apk
 *.aab
 .kotlin/
+
+# Firma de la app: nunca al repositorio
+keystore.properties
+*.jks
+*.keystore

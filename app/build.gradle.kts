@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -17,8 +19,27 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // Firma de la versión de distribución. Las claves NO van en el repositorio:
+    // se leen de keystore.properties (ignorado por git) en la raíz del proyecto.
+    val propiedadesFirma = Properties().apply {
+        val archivo = rootProject.file("keystore.properties")
+        if (archivo.exists()) archivo.inputStream().use { load(it) }
+    }
+    signingConfigs {
+        if (propiedadesFirma.isNotEmpty()) {
+            create("distribucion") {
+                storeFile = rootProject.file(propiedadesFirma.getProperty("storeFile"))
+                storePassword = propiedadesFirma.getProperty("storePassword")
+                keyAlias = propiedadesFirma.getProperty("keyAlias")
+                keyPassword = propiedadesFirma.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
+            signingConfigs.findByName("distribucion")?.let { signingConfig = it }
+            // Sin ofuscar: Retrofit y Gson leen los DTO por reflexión.
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
