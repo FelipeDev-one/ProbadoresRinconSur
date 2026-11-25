@@ -51,6 +51,10 @@ Todas las cuentas ingresan con **RUT y contraseña**. Nada se ve sin cuenta, y c
 - Colaboradores (jefatura): búsqueda por nombre o RUT, filtro por perfil y opción para ver los inactivos.
 - Las alertas de probadores libres se agrupan en una sola ("3 probadores libres sin asignar").
 
+**Clima de la tienda (API externa)**
+- El cliente (al tomar su turno) y la jefatura (en Resumen) ven la temperatura y el estado del tiempo en la tienda,
+  con una sugerencia de ropa para probarse. Viene de la API pública Open-Meteo y no se guarda en Room ni en los microservicios.
+
 **Notificaciones (segundo recurso nativo)**
 - Permiso `POST_NOTIFICATIONS`, pedido en el momento en que tiene sentido: al personal al entrar al panel y al cliente al tomar su turno.
 - Personal: aviso cuando aparece una alerta urgente (uso prolongado con fila o probadores libres sin asignar). Se puede desactivar en Ajustes.
@@ -68,6 +72,8 @@ Todas las cuentas ingresan con **RUT y contraseña**. Nada se ve sin cuenta, y c
 - Vibración del dispositivo
 - Notificaciones locales con canales y permiso en tiempo de ejecución
 - Retrofit + Gson para consumir los microservicios a través del API Gateway
+- Retrofit (cliente aparte) para la API externa de clima Open-Meteo
+- JUnit 4, kotlinx-coroutines-test y JaCoCo para las pruebas unitarias y su cobertura
 
 ## Ejecución
 
@@ -139,6 +145,10 @@ Conectada a los microservicios (Samsung Galaxy A14, APK firmado 1.0.0): la cuent
 |---|---|---|
 | ![Cliente conectado](docs/Cliente_Servidor.png) | ![Turno tomado](docs/Cliente_Turno.png) | ![Turno llamado](docs/Cliente_Llamado.png) |
 
+| API externa: clima de la tienda (Open-Meteo) |
+|---|
+| ![Clima de la tienda](docs/Clima_API_Externa.png) |
+
 ## Estructura
 
 ```
@@ -155,32 +165,96 @@ utils/        validaciones, RUT, contraseñas, fechas, imágenes, vibración y n
 docs/         capturas de funcionamiento
 ```
 
-## Distribución
+## Endpoints utilizados
 
-La versión `release` se firma con un keystore propio. Las claves no están en el repositorio:
+### API externa: Open-Meteo (clima)
 
-1. Crear el keystore: `keytool -genkeypair -v -keystore keystore/probadores-rs.jks -alias probadores-rs -keyalg RSA -keysize 2048 -validity 10000`
-2. Copiar `keystore.properties.example` como `keystore.properties` y completar las contraseñas (archivo ignorado por git).
-3. Generar: `./gradlew assembleRelease bundleRelease`
+Pública, gratuita y sin clave. Se consume con su propio Retrofit (`data/externa/ClimaApi.kt`) y se muestra en
+la tarjeta de clima (`ui/components/ClimaCard.kt`).
+
+| Método | Endpoint | Uso en la app |
+|---|---|---|
+| GET | `https://api.open-meteo.com/v1/forecast?latitude=-33.36&longitude=-70.73&current=temperature_2m,apparent_temperature,weather_code&timezone=America/Santiago` | Temperatura, sensación térmica y estado del tiempo en la tienda |
+
+### Microservicios propios (a través del API Gateway, puerto 8080)
+
+Definidos en `data/remote/ApiServicios.kt`. La dirección base se configura con el botón **Servidor**.
+
+| Servicio | Método | Endpoint | Uso en la app |
+|---|---|---|---|
+| usuarios-service | GET | `/api/usuarios` | Descargar colaboradores y clientes |
+| usuarios-service | GET | `/api/usuarios/{rut}` | Buscar una cuenta al ingresar |
+| usuarios-service | GET | `/api/usuarios/estado-inicial` | Saber si la sección ya está configurada |
+| usuarios-service | POST | `/api/usuarios/configuracion-inicial` | Crear la cuenta de jefatura (asistente inicial) |
+| usuarios-service | POST | `/api/usuarios/registro` | Crear cuenta de cliente |
+| usuarios-service | POST | `/api/usuarios/colaboradores` | Agregar colaborador (jefatura) |
+| usuarios-service | PUT | `/api/usuarios/{rut}` | Editar datos del colaborador o del cliente |
+| usuarios-service | POST | `/api/usuarios/login` | Ingresar con RUT y contraseña |
+| usuarios-service | POST | `/api/usuarios/{rut}/contrasena` | Crear contraseña (primer ingreso) |
+| usuarios-service | PUT | `/api/usuarios/{rut}/contrasena` | Cambiar contraseña |
+| usuarios-service | POST | `/api/usuarios/{rut}/recuperar` | Recuperar contraseña con el código |
+| usuarios-service | DELETE | `/api/usuarios/{rut}/contrasena` | Restablecer contraseña (jefatura) |
+| probadores-service | GET | `/api/probadores` | Estado de los probadores |
+| probadores-service | PUT | `/api/probadores/{codigo}` | Crear o actualizar un probador (asignar, terminar, fuera de servicio…) |
+| probadores-service | DELETE | `/api/probadores/{codigo}` | Eliminar un probador sin uso |
+| probadores-service | GET | `/api/probadores/usos` | Usos de los probadores |
+| probadores-service | PUT | `/api/probadores/usos/{id}` | Registrar el inicio o término de un uso |
+| probadores-service | GET | `/api/probadores/cambios` | Historial de cambios de estado |
+| probadores-service | POST | `/api/probadores/cambios` | Registrar un cambio de estado |
+| turnos-service | GET | `/api/turnos` | Fila del día |
+| turnos-service | PUT | `/api/turnos/{id}` | Crear o actualizar un turno (llamar, atender, abandono) |
+| turnos-service | GET | `/api/turnos/parametros` | Parámetros de la sección |
+| turnos-service | PUT | `/api/turnos/parametros` | Guardar parámetros (jefatura) |
+
+Con esto la app cubre el CRUD completo: crea (turnos, cuentas, probadores, colaboradores), lee (sincronización
+cada 5 segundos), actualiza (estados, datos y parámetros) y elimina (probadores y contraseñas).
+
+## APK firmado y llave (.jks)
+
+| Archivo | Qué es |
+|---|---|
+| [`distribucion/ProbadoresRS-1.1.0.apk`](distribucion/ProbadoresRS-1.1.0.apk) | APK de la versión `release`, firmado (APK Signature Scheme v2) |
+| [`keystore/probadores-rs.jks`](keystore/probadores-rs.jks) | Llave generada con `keytool` (RSA 2048, alias `probadores-rs`, 10 000 días) |
+| [`keystore.properties.example`](keystore.properties.example) | Plantilla de la configuración de firma |
+| [`app/build.gradle.kts`](app/build.gradle.kts) | `signingConfigs` → `distribucion`, usado por el `buildType` `release` |
+
+Las contraseñas de la llave no están en el repositorio: se entregan aparte (AVA).
+
+![APK firmado y .jks](docs/APK_Firmado_JKS.png)
+
+### Cómo se generó
+
+1. Llave: `keytool -genkeypair -v -keystore keystore/probadores-rs.jks -alias probadores-rs -keyalg RSA -keysize 2048 -validity 10000`
+2. Configuración: copiar `keystore.properties.example` como `keystore.properties` y escribir las contraseñas
+   (`keystore.properties` está en `.gitignore`).
+3. Compilación firmada: `./gradlew assembleRelease bundleRelease`
    - APK: `app/build/outputs/apk/release/app-release.apk`
    - AAB: `app/build/outputs/bundle/release/app-release.aab`
+4. Verificación: `apksigner verify -v --print-certs distribucion/ProbadoresRS-1.1.0.apk`
 
-La app se instala como **Probadores RS** (versión 1.0.0), con ícono propio y Splash Screen.
+La app se instala como **Probadores RS** (versión 1.1.0), con ícono propio y Splash Screen.
 
 ## Pruebas
 
 ```
-./gradlew testDebugUnitTest
+./gradlew testDebugUnitTest      # ejecutar las pruebas
+./gradlew coberturaLogica        # reporte JaCoCo: app/build/reports/jacoco/coberturaLogica/html/index.html
+./gradlew verificarCobertura     # falla si la cobertura de la lógica baja de 80 %
 ```
 
-64 pruebas unitarias de lógica en 4 archivos (`app/src/test`), todas en verde. No hay pruebas de interfaz ni instrumentadas.
+81 pruebas unitarias (JUnit 4 y kotlinx-coroutines-test) en 4 archivos (`app/src/test`), todas en verde.
+No hay pruebas de interfaz ni instrumentadas.
+
+**Cobertura de la lógica (JaCoCo): 96 % de las líneas.** La lógica incluye las reglas de negocio (`model`),
+las utilidades, los repositorios remotos con Retrofit (microservicios y API externa), las cuentas remotas y
+el `ClimaViewModel`. Las pruebas de repositorio y de ViewModel usan APIs falsas (FakeApi) en lugar del servidor real.
 
 | Clase | Pruebas | Qué prueba |
 |---|---|---|
-| `ReglasNegocioTest` | 20 | Reglas de la fila, los probadores, el resumen, la estimación de espera y las alertas agrupadas |
+| `ReglasNegocioTest` | 30 | Reglas de la fila y los probadores, transiciones inválidas, resumen, estimación de espera, alertas y formatos |
 | `CuentasYRolesTest` | 19 | Cuentas de cliente, turno propio, permisos de cada rol, hash de contraseñas, código de recuperación y bloqueo por intentos |
 | `ConfiguracionSeccionTest` | 10 | Configuración inicial, mantenedor de probadores y validaciones de formulario |
-| `IntegracionServidorTest` | 15 | Sincronización, cuentas y errores contra APIs simuladas (FakeApi, sin servidor real) |
+| `IntegracionServidorTest` | 22 | Repositorios remotos: sincronización, cuentas y errores contra los microservicios simulados; API externa de clima (`ClimaRepository` y `ClimaViewModel`) |
 
 ## Microservicios
 
