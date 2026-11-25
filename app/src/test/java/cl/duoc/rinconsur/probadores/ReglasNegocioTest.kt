@@ -1,15 +1,20 @@
 package cl.duoc.rinconsur.probadores
 
 import cl.duoc.rinconsur.probadores.data.DatosEjemplo
+import cl.duoc.rinconsur.probadores.model.Alerta
+import cl.duoc.rinconsur.probadores.model.Colaborador
 import cl.duoc.rinconsur.probadores.model.EstadoProbador
 import cl.duoc.rinconsur.probadores.model.EstadoTurno
 import cl.duoc.rinconsur.probadores.model.EstimadorEspera
 import cl.duoc.rinconsur.probadores.model.FRANJAS
+import cl.duoc.rinconsur.probadores.model.GeneradorAlertas
 import cl.duoc.rinconsur.probadores.model.MotivoAbandono
+import cl.duoc.rinconsur.probadores.model.Perfil
 import cl.duoc.rinconsur.probadores.model.ReglaNegocioException
 import cl.duoc.rinconsur.probadores.model.ReglasSeccion
 import cl.duoc.rinconsur.probadores.model.ResumenCalculator
 import cl.duoc.rinconsur.probadores.model.Seccion
+import cl.duoc.rinconsur.probadores.model.TurnoLaboral
 import cl.duoc.rinconsur.probadores.utils.RutValidator
 import cl.duoc.rinconsur.probadores.utils.Tiempo
 import org.junit.Assert.assertEquals
@@ -172,5 +177,45 @@ class ReglasNegocioTest {
         val t = s2.turnos.first { it.id == turno.id }
         assertEquals(MotivoAbandono.CIERRE_TIENDA, t.motivoAbandono)
         assertNull(s2.turnos.firstOrNull { it.estado.abierto })
+    }
+
+    // ------------------------------ ALERTAS AGRUPADAS ------------------------------
+
+    private val ahoraAlertas = Tiempo.millis(2026, 11, 19, 12, 0)
+    private val jefaAlertas = Colaborador("12984561-9", "Patricia Morales", Perfil.JEFATURA, TurnoLaboral.MANANA)
+
+    private fun seccionConFila(): Seccion {
+        val s = ReglasSeccion.configurarInicial(Seccion(), jefaAlertas, 3, 0, ahoraAlertas)
+        return ReglasSeccion.registrarTurno(s, 2, false, jefaAlertas.rut, ahoraAlertas, false).first
+    }
+
+    @Test
+    fun `los probadores libres con fila generan una sola alerta agrupada`() {
+        val s = seccionConFila()
+        val fila = ReglasSeccion.filaDelDia(s, Tiempo.fechaIso(ahoraAlertas))
+        val alertas = GeneradorAlertas.generar(s, fila, ahoraAlertas + 5 * 60_000)
+
+        val libres = alertas.filterIsInstance<Alerta.ProbadoresSinAsignar>()
+        assertEquals(1, libres.size)
+        assertEquals("3 probadores libres sin asignar", libres.first().titulo)
+        assertTrue(libres.first().detalle.startsWith("P-01, P-02, P-03"))
+        assertTrue(libres.first().urgente)
+    }
+
+    @Test
+    fun `sin fila no hay alerta de probadores libres`() {
+        val s = ReglasSeccion.configurarInicial(Seccion(), jefaAlertas, 3, 0, ahoraAlertas)
+        val alertas = GeneradorAlertas.generar(s, emptyList(), ahoraAlertas + 5 * 60_000)
+        assertTrue(alertas.none { it is Alerta.ProbadoresSinAsignar })
+    }
+
+    @Test
+    fun `un solo probador libre se nombra por su codigo`() {
+        var s = seccionConFila()
+        s = ReglasSeccion.asignarProbador(s, "P-01", null, 1, jefaAlertas.rut, ahoraAlertas)
+        s = ReglasSeccion.asignarProbador(s, "P-02", null, 1, jefaAlertas.rut, ahoraAlertas)
+        val fila = ReglasSeccion.filaDelDia(s, Tiempo.fechaIso(ahoraAlertas))
+        val alerta = GeneradorAlertas.generar(s, fila, ahoraAlertas + 5 * 60_000).filterIsInstance<Alerta.ProbadoresSinAsignar>().single()
+        assertEquals("P-03 libre sin asignar", alerta.titulo)
     }
 }

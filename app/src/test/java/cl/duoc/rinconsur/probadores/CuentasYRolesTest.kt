@@ -6,13 +6,18 @@ import cl.duoc.rinconsur.probadores.model.EstadoTurno
 import cl.duoc.rinconsur.probadores.model.MotivoAbandono
 import cl.duoc.rinconsur.probadores.model.Perfil
 import cl.duoc.rinconsur.probadores.model.ReglaNegocioException
+import cl.duoc.rinconsur.probadores.model.ReglasAcceso
 import cl.duoc.rinconsur.probadores.model.ReglasSeccion
 import cl.duoc.rinconsur.probadores.model.Seccion
 import cl.duoc.rinconsur.probadores.model.TurnoLaboral
 import cl.duoc.rinconsur.probadores.model.cuenta
 import cl.duoc.rinconsur.probadores.navigation.Ruta
+import cl.duoc.rinconsur.probadores.utils.Contrasenas
+import cl.duoc.rinconsur.probadores.utils.RutVisualTransformation
 import cl.duoc.rinconsur.probadores.utils.Tiempo
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -177,5 +182,75 @@ class CuentasYRolesTest {
         assertEquals(Ruta.Fila, Ruta.inicioPara(Perfil.VENDEDOR))
         assertEquals(Ruta.Probadores, Ruta.inicioPara(Perfil.ASISTENTE))
         assertEquals(Ruta.Resumen, Ruta.inicioPara(Perfil.JEFATURA))
+    }
+
+    // ------------------------------ CONTRASEÑAS Y BLOQUEO ------------------------------
+
+    private val rutAcceso = "12984561-9"
+    private val ahoraAcceso = 1_000_000L
+
+    @Test
+    fun `la contrasena se guarda como hash y se verifica`() {
+        val (c, _) = ReglasAcceso.crear(rutAcceso, "clave123")
+        assertNotEquals("clave123", c.hash)
+        assertTrue(ReglasAcceso.contrasenaCorrecta(c, "clave123"))
+        assertFalse(ReglasAcceso.contrasenaCorrecta(c, "clave124"))
+    }
+
+    @Test
+    fun `la misma contrasena genera hashes distintos por la sal`() {
+        val (a, _) = ReglasAcceso.crear(rutAcceso, "clave123")
+        val (b, _) = ReglasAcceso.crear(rutAcceso, "clave123")
+        assertNotEquals(a.hash, b.hash)
+    }
+
+    @Test
+    fun `el codigo de recuperacion sirve con o sin guion y en minusculas`() {
+        val (c, codigo) = ReglasAcceso.crear(rutAcceso, "clave123")
+        assertTrue(Regex("[A-Z2-9]{4}-[A-Z2-9]{4}").matches(codigo))
+        assertTrue(ReglasAcceso.codigoCorrecto(c, codigo))
+        assertTrue(ReglasAcceso.codigoCorrecto(c, codigo.replace("-", "").lowercase()))
+        assertFalse(ReglasAcceso.codigoCorrecto(c, "AAAA-AAAA"))
+    }
+
+    @Test
+    fun `cinco fallos bloquean un minuto y luego se libera`() {
+        var c = ReglasAcceso.crear(rutAcceso, "clave123").first
+        repeat(4) { c = ReglasAcceso.registrarFallo(c, ahoraAcceso) }
+        assertEquals(1, ReglasAcceso.intentosRestantes(c))
+        assertEquals(0, ReglasAcceso.segundosBloqueo(c, ahoraAcceso))
+
+        c = ReglasAcceso.registrarFallo(c, ahoraAcceso)
+        assertEquals(60, ReglasAcceso.segundosBloqueo(c, ahoraAcceso))
+        assertEquals(0, ReglasAcceso.segundosBloqueo(c, ahoraAcceso + ReglasAcceso.MILIS_BLOQUEO))
+    }
+
+    @Test
+    fun `un ingreso correcto reinicia los intentos`() {
+        var c = ReglasAcceso.crear(rutAcceso, "clave123").first
+        repeat(3) { c = ReglasAcceso.registrarFallo(c, ahoraAcceso) }
+        c = ReglasAcceso.registrarExito(c)
+        assertEquals(ReglasAcceso.MAX_INTENTOS, ReglasAcceso.intentosRestantes(c))
+    }
+
+    @Test
+    fun `reglas para una contrasena nueva`() {
+        assertEquals("Campo obligatorio", Contrasenas.validarNueva("", "").first)
+        assertEquals("Debe tener al menos 6 caracteres", Contrasenas.validarNueva("ab1", "ab1").first)
+        assertEquals("Debe tener al menos una letra y un número", Contrasenas.validarNueva("abcdefg", "abcdefg").first)
+        assertEquals("Las contraseñas no coinciden", Contrasenas.validarNueva("clave123", "clave12").second)
+        assertEquals(null to null, Contrasenas.validarNueva("clave123", "clave123"))
+    }
+
+    @Test
+    fun `el RUT se dibuja con puntos y guion mientras se escribe`() {
+        assertEquals("1", RutVisualTransformation.formatear("1").first)
+        assertEquals("12-9", RutVisualTransformation.formatear("129").first)
+        assertEquals("1.298-4", RutVisualTransformation.formatear("12984").first)
+        assertEquals("12.984.561-9", RutVisualTransformation.formatear("129845619").first)
+        assertEquals("16.842.311-K", RutVisualTransformation.formatear("16842311K").first)
+        // El cursor al final del texto crudo queda al final del texto con formato.
+        val (texto, mapa) = RutVisualTransformation.formatear("129845619")
+        assertEquals(texto.length, mapa[9])
     }
 }
